@@ -210,9 +210,13 @@ select.sel { padding-right: 26px; appearance: none; background-image: url("data:
 .act { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .act-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .act-n { font: 600 11px var(--mono); color: var(--out); background: var(--out-soft); border-radius: 6px; width: 22px; height: 22px; display: grid; place-items: center; flex: none; }
-.act-head .act-type { flex: 1 1 170px; font-weight: 550; }
-.act-head .act-port { flex: 1 1 150px; }
-.act-head .icon-btn { margin-left: auto; }
+.act-head .act-name { flex: 1; min-width: 0; height: 28px; border-color: transparent; background: transparent; font-weight: 620; font-family: var(--sans); }
+.act-head .act-name:hover { border-color: var(--border); }
+.act-head .act-name:focus { border-color: var(--accent); background: var(--surface); }
+.act-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.act-row .act-type { flex: 1 1 170px; font-weight: 550; }
+.act-row .act-port { flex: 1 1 150px; }
+.chip b { font-family: var(--sans); font-weight: 650; }
 .frow { display: grid; grid-template-columns: 96px minmax(130px, 190px) minmax(0, 1fr); gap: 8px; align-items: center; }
 .frow .flabel { font-size: 12px; color: var(--muted); font-weight: 550; }
 .params { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
@@ -438,7 +442,7 @@ function tgtInfo(t) {
 const uid = () => Math.random().toString(36).slice(2, 10);
 const F = (mode = 'same', a = '', b = '', c = '', d = '', text = '') => ({ mode, a: String(a), b: String(b), c: String(c), d: String(d), text });
 function A(type = 'cc', o = {}) {
-  return Object.assign({ id: uid(), output: 'default', type, ch: F('same'), num: F('fixed', '1'), val: F('same'), delay: '0', pulse: '0', raw: 'F0 7D {num} {val} F7' }, o);
+  return Object.assign({ id: uid(), name: '', output: 'default', type, ch: F('same'), num: F('fixed', '1'), val: F('same'), delay: '0', pulse: '0', raw: 'F0 7D {num} {val} F7' }, o);
 }
 function R(name, src = {}, actions = [], o = {}) {
   return Object.assign({ id: uid(), name, enabled: true, open: true, stop: false, passOriginal: false,
@@ -838,10 +842,11 @@ function handle(data, port, isTest = false) {
     rule.actions.forEach((act, i) => {
       try {
         const res = runAction(rule, i, act, msg);
-        if (!res) { entry.outs.push({ rule: rule.name, note: `sortie ${i + 1} : rien à envoyer` }); return; }
+        const label = act.name ? rule.name + ' › ' + act.name : rule.actions.length > 1 ? rule.name + ' › sortie ' + (i + 1) : rule.name;
+        if (!res) { entry.outs.push({ rule: label, note: 'rien à envoyer' }); return; }
         const p = resolvePort(act.output);
-        for (const r of res) entry.outs.push(Object.assign({ rule: rule.name, port: p, bytes: r.bytes, delay: r.delay }, send(p, r.bytes, r.delay)));
-      } catch (e) { entry.outs.push({ rule: rule.name, status: 'error', error: e.message }); }
+        for (const r of res) entry.outs.push(Object.assign({ rule: label, port: p, bytes: r.bytes, delay: r.delay }, send(p, r.bytes, r.delay)));
+      } catch (e) { entry.outs.push({ rule: rule.name + (act.name ? ' › ' + act.name : ''), status: 'error', error: e.message }); }
     });
     if (rule.passOriginal) entry.outs.push(Object.assign({ rule: rule.name, port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
     if (rule.stop) break;
@@ -985,7 +990,7 @@ function actSummary(act) {
 }
 function ruleSummaryHTML(rule) {
   const dst = rule.actions.length
-    ? rule.actions.map(a => `<span class="chip dst">${esc(actSummary(a))}</span>`).join('')
+    ? rule.actions.map(a => `<span class="chip dst" title="${esc(actSummary(a))}">${a.name ? `<b>${esc(a.name)}</b> ` : ''}${esc(actSummary(a))}</span>`).join('')
     : '<span class="chip blk">bloqué</span>';
   const extra = (rule.passOriginal ? ' <span class="chip dst">+ original</span>' : '') + (rule.stop ? ' <span class="chip blk">stop</span>' : '');
   return `<span class="chip src">${esc(srcSummary(rule.src))}</span><span class="arr">→</span>${dst}${extra}`;
@@ -1121,9 +1126,12 @@ function actionCard(rule, act, i) {
   return h('div', { class: 'act' },
     h('div', { class: 'act-head' },
       h('span', { class: 'act-n' }, String(i + 1)),
+      h('input', { class: 'field act-name', value: act.name || '', placeholder: `Sortie ${i + 1} — nommer…`, 'aria-label': 'Nom de la sortie', oninput: e => { act.name = e.target.value; changed(rule); } }),
+      iconBtn('x', 'Retirer cette sortie', () => { rule.actions.splice(i, 1); changed(rule, true); }, false, 'danger'),
+    ),
+    h('div', { class: 'act-row' },
       sel(TGT_TYPES, t, v => { act.type = v; adaptDefaults(act); changed(rule, true); }, 'act-type'),
       sel(outputOptions(act.output, true), act.output, v => { act.output = v; changed(rule); }, 'act-port'),
-      iconBtn('x', 'Retirer cette sortie', () => { rule.actions.splice(i, 1); changed(rule, true); }, false, 'danger'),
     ),
     raw,
     fieldRow(rule, act, 'ch', 'Canal', t),
