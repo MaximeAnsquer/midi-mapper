@@ -141,6 +141,12 @@ select.sel { padding-right: 26px; appearance: none; background-image: url("data:
 .led { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--border-strong); flex: none; transition: background .25s, box-shadow .25s; }
 .led.in.on { background: var(--in); border-color: var(--in); box-shadow: 0 0 0 3px var(--in-soft); transition: none; }
 .led.out.on { background: var(--out); border-color: var(--out); box-shadow: 0 0 0 3px var(--out-soft); transition: none; }
+.clock-read { display: flex; align-items: baseline; gap: 10px; }
+.clock-read b { font: 650 22px var(--mono); letter-spacing: -.02em; }
+.clock-read span { font-size: 12.5px; color: var(--muted); }
+.beat { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--border-strong); transition: background .2s, box-shadow .2s; }
+.beat.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); transition: none; }
+.beat.bar { background: var(--out); border-color: var(--out); box-shadow: 0 0 0 3px var(--out-soft); }
 .warnbox { margin-top: 8px; font-size: 12px; color: var(--out); background: var(--out-soft); border-radius: 8px; padding: 7px 9px; }
 
 /* ---------- Rules ---------- */
@@ -322,6 +328,15 @@ select.sel { padding-right: 26px; appearance: none; background-image: url("data:
       <p class="hint">Chaque sortie d'une règle peut viser un autre port. Sur Mac, pour envoyer vers un logiciel (DAW…), active le <b>bus IAC</b> dans <i>Configuration audio et MIDI</i>.</p>
     </section>
     <section class="panel">
+      <h2>Horloge MIDI <span class="beat" id="beatLed"></span></h2>
+      <div class="clock-read"><b id="clockBpm">—</b><span id="clockPos">Aucune horloge reçue</span></div>
+      <div class="stack" style="margin-top:10px">
+        <div class="row"><span style="font-size:13px;flex:none">Source</span><select class="sel" id="clockSrc"></select></div>
+        <div class="row"><span style="font-size:13px;flex:1">Temps par mesure</span><input class="field n" id="beatsPerBar" inputmode="numeric" style="flex:none"></div>
+      </div>
+      <p class="hint">Sert à la quantification des sorties (« ⏱ Quantifier ») : une sortie attend la prochaine subdivision avant d'être envoyée.</p>
+    </section>
+    <section class="panel">
       <h2>Réglages</h2>
       <div class="stack">
         <label class="check"><input type="checkbox" id="setThru"><span>Laisser passer les messages non convertis<small>Les messages qui ne correspondent à aucune règle sont envoyés tels quels sur la sortie par défaut.</small></span></label>
@@ -442,7 +457,7 @@ function tgtInfo(t) {
 const uid = () => Math.random().toString(36).slice(2, 10);
 const F = (mode = 'same', a = '', b = '', c = '', d = '', text = '') => ({ mode, a: String(a), b: String(b), c: String(c), d: String(d), text });
 function A(type = 'cc', o = {}) {
-  return Object.assign({ id: uid(), name: '', output: 'default', type, ch: F('same'), num: F('fixed', '1'), val: F('same'), delay: '0', pulse: '0', raw: 'F0 7D {num} {val} F7' }, o);
+  return Object.assign({ id: uid(), name: '', output: 'default', type, ch: F('same'), num: F('fixed', '1'), val: F('same'), delay: '0', pulse: '0', quant: '', raw: 'F0 7D {num} {val} F7' }, o);
 }
 function R(name, src = {}, actions = [], o = {}) {
   return Object.assign({ id: uid(), name, enabled: true, open: true, stop: false, passOriginal: false,
@@ -499,7 +514,7 @@ const TEMPLATES = [
 function defaultConfig() {
   return {
     version: 1,
-    settings: { inputs: {}, defaultOutput: '', thru: false, vel0off: true, hideClock: true, middleC: 'C4', bypass: false, theme: 'auto', kbdOct: 4, kbdCh: 1 },
+    settings: { inputs: {}, defaultOutput: '', thru: false, vel0off: true, hideClock: true, middleC: 'C4', bypass: false, theme: 'auto', kbdOct: 4, kbdCh: 1, clockSource: 'auto', beatsPerBar: 4 },
     rules: TEMPLATES[1].make().map(r => (r.open = false, r)),
   };
 }
@@ -812,6 +827,54 @@ function send(portName, bytes, delay) {
 }
 const resolvePort = p => p === 'default' ? cfg.settings.defaultOutput : p;
 
+/* =====================================================================
+   Horloge MIDI (24 impulsions par noire) et quantification
+   ===================================================================== */
+const QUANTS = [['', 'Immédiat'], ['bar', '1 mesure'], ['48', '1/2'], ['24', '1/4'], ['12', '1/8'], ['6', '1/16'], ['3', '1/32'], ['16', '1/4 triolet'], ['8', '1/8 triolet'], ['4', '1/16 triolet']];
+const quantTicks = q => q === 'bar' ? 24 * Math.max(1, Math.round(numOr(cfg.settings.beatsPerBar, 4))) : parseInt(q, 10) || 0;
+const quantLabel = q => (QUANTS.find(x => x[0] === q) || [, q])[1];
+const clock = { port: null, tick: -1, last: 0, intervals: [], bpm: 0, running: false, pending: [] };
+const clockAlive = () => performance.now() - clock.last < 500;
+
+function clockMsg(s, b, port) {
+  const src = cfg.settings.clockSource;
+  if (src === 'none' || (src !== 'auto' && port !== src)) return;
+  const now = performance.now();
+  if (src === 'auto' && clock.port && clock.port !== port && now - clock.last < 1000) return;   // une seule horloge à la fois
+  clock.port = port;
+  switch (s) {
+    case 0xF8: {
+      if (clock.last && now - clock.last < 1000) {
+        clock.intervals.push(now - clock.last);
+        if (clock.intervals.length > 48) clock.intervals.shift();
+        const avg = clock.intervals.reduce((a, x) => a + x, 0) / clock.intervals.length;
+        clock.bpm = 60000 / (avg * 24);
+      } else clock.intervals = [];
+      clock.last = now;
+      clock.tick++;
+      if (clock.tick % 24 === 0) beatFlash(clock.tick % quantTicks('bar') === 0);
+      flushPending(false);
+      break;
+    }
+    case 0xFA: clock.tick = -1; clock.running = true; break;          // le prochain F8 = temps 1 de la mesure 1
+    case 0xFB: clock.running = true; break;
+    case 0xFC: clock.running = false; break;
+    case 0xF2: clock.tick = ((b[1] | (b[2] << 7)) * 6) - 1; break;   // Song Position (en doubles croches)
+  }
+}
+/* Envoie les sorties en attente dont la subdivision tombe sur ce tick (ou toutes si force) */
+function flushPending(force) {
+  if (!clock.pending.length) return;
+  const keep = [];
+  for (const p of clock.pending) {
+    const n = quantTicks(p.q);
+    if (force || (n > 0 && clock.tick >= 0 && clock.tick % n === 0)) send(p.port, p.bytes, p.delay);
+    else keep.push(p);
+  }
+  clock.pending = keep;
+}
+setInterval(() => { if (clock.pending.length && !clockAlive()) flushPending(true); }, 100);   // horloge coupée : on n'attend pas
+
 function handle(data, port, isTest = false) {
   const bytes = Array.from(data);
   const s = bytes[0];
@@ -820,6 +883,7 @@ function handle(data, port, isTest = false) {
   const entry = { time: new Date(), port, bytes, outs: [], matched: false, test: isTest };
 
   if (s >= 0xF0) {                                    // messages système / SysEx / temps réel
+    if (s === 0xF8 || s === 0xFA || s === 0xFB || s === 0xFC || s === 0xF2) clockMsg(s, bytes, port);
     if (cfg.settings.thru || cfg.settings.bypass) entry.outs.push(Object.assign({ port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
     if (!(cfg.settings.hideClock && (s === 0xF8 || s === 0xFE))) log(entry);
     return;
@@ -845,7 +909,12 @@ function handle(data, port, isTest = false) {
         const label = act.name ? rule.name + ' › ' + act.name : rule.actions.length > 1 ? rule.name + ' › sortie ' + (i + 1) : rule.name;
         if (!res) { entry.outs.push({ rule: label, note: 'rien à envoyer' }); return; }
         const p = resolvePort(act.output);
-        for (const r of res) entry.outs.push(Object.assign({ rule: label, port: p, bytes: r.bytes, delay: r.delay }, send(p, r.bytes, r.delay)));
+        const q = quantTicks(act.quant) ? act.quant : '';
+        if (q && clockAlive()) {
+          for (const r of res) { clock.pending.push({ q, port: p, bytes: r.bytes, delay: r.delay }); entry.outs.push({ rule: label, port: p, bytes: r.bytes, delay: r.delay, status: 'queued', quant: q }); }
+        } else {
+          for (const r of res) entry.outs.push(Object.assign({ rule: label, port: p, bytes: r.bytes, delay: r.delay, noClock: !!q }, send(p, r.bytes, r.delay)));
+        }
       } catch (e) { entry.outs.push({ rule: rule.name + (act.name ? ' › ' + act.name : ''), status: 'error', error: e.message }); }
     });
     if (rule.passOriginal) entry.outs.push(Object.assign({ rule: rule.name, port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
@@ -985,6 +1054,7 @@ function actSummary(act) {
   const c = fieldStr(act.ch, 'ch', false); if (c) parts.push('ch ' + c);
   let s = parts.join(' ');
   if (numOr(act.delay, 0) > 0) s += ` +${act.delay}ms`;
+  if (act.quant) s += ' ⏱' + quantLabel(act.quant);
   if (act.output !== 'default') s += ' ⟶ ' + (act.output || 'aucune sortie');
   return s;
 }
@@ -1121,7 +1191,7 @@ function actionCard(rule, act, i) {
     el.addEventListener('input', () => { act[key] = el.value; changed(rule); });
     return el;
   };
-  const extras = [h('label', null, 'Délai', numIn('delay', '0'), 'ms')];
+  const extras = [h('label', { title: 'Attend la prochaine subdivision de l’horloge MIDI reçue avant d’envoyer (envoi immédiat s’il n’y a pas d’horloge)' }, '⏱ Quantifier', sel(QUANTS, act.quant || '', v => { act.quant = v; changed(rule); })), h('label', null, 'Délai', numIn('delay', '0'), 'ms')];
   if (t === 'noteon' || t === 'note') extras.push(h('label', { title: 'Envoie automatiquement le Note Off après cette durée (0 = jamais)' }, 'Note Off auto après', numIn('pulse', '0'), 'ms'));
   return h('div', { class: 'act' },
     h('div', { class: 'act-head' },
@@ -1286,9 +1356,9 @@ function renderEntry(e) {
     const rule = o.rule ? `<span class="r">${esc(o.rule)}</span>` : (o.thru ? `<span class="r">${e.bypass ? 'bypass' : 'thru'}</span>` : '');
     if (o.note) { out.push(`<div class="ln note"><span class="d">↳</span><span class="m">${esc(o.note)} ${rule}</span><span></span></div>`); continue; }
     if (o.status === 'error' && !o.bytes) { out.push(`<div class="ln err"><span class="d">↳ erreur</span><span class="m">${esc(o.error)} ${rule}</span><span></span></div>`); continue; }
-    const where = o.status === 'none' ? 'aucune sortie' : o.status === 'missing' ? `${o.port} (absent)` : o.port;
+    const where = !o.port ? 'aucune sortie' : o.status === 'missing' ? `${o.port} (absent)` : o.port;
     const err = o.status === 'error' ? ` <span style="color:var(--danger)">${esc(o.error)}</span>` : '';
-    const delay = o.delay > 0 ? ` <span class="kv">+${o.delay} ms</span>` : '';
+    const delay = (o.delay > 0 ? ` <span class="kv">+${o.delay} ms</span>` : '') + (o.status === 'queued' ? ` <span class="kv">⏱ au prochain ${esc(quantLabel(o.quant))}</span>` : '') + (o.noClock ? ' <span class="kv">⏱ pas d’horloge : immédiat</span>' : '');
     out.push(`<div class="ln out"><span class="d">↳ envoyé</span><span class="m">${fmtMsg(o.bytes)}${delay} <span class="p">→ ${esc(where)}</span>${rule}${err}</span><span class="hx">${hex(o.bytes)}</span></div>`);
   }
   if (!e.matched && !e.outs.length) out.push('<div class="ln note"><span class="d">↳</span><span class="m">aucune règle ne correspond</span><span></span></div>');
@@ -1364,7 +1434,29 @@ function renderPorts() {
       h('span', { class: 'name', title: name }, name ? name + (missing ? ' (absent)' : '') : 'Aucune (moniteur seulement)'), led));
   }
   checkLoop();
+  renderClockSrc();
   renderPresets();
+}
+function beatFlash(bar) {
+  const el = document.getElementById('beatLed');
+  el.classList.add('on'); el.classList.toggle('bar', bar);
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on', 'bar'), 90);
+}
+function renderClockSrc() {
+  const opts = [['auto', 'Automatique'], ...inputNames().map(n => [n, n]), ['none', 'Ignorer l’horloge']];
+  const cur = cfg.settings.clockSource;
+  if (cur !== 'auto' && cur !== 'none' && !opts.some(o => o[0] === cur)) opts.push([cur, cur + ' (absent)']);
+  const s = $('#clockSrc');
+  s.replaceChildren(...opts.map(([v, l]) => h('option', { value: v }, l)));
+  s.value = cur;
+}
+function updateClockView() {
+  const alive = clockAlive();
+  $('#clockBpm').textContent = alive && clock.bpm ? clock.bpm.toFixed(1) : '—';
+  if (!alive) { $('#clockPos').textContent = cfg.settings.clockSource === 'none' ? 'Horloge ignorée' : 'Aucune horloge reçue'; return; }
+  const bpb = quantTicks('bar') / 24, t = Math.max(0, clock.tick);
+  const pos = `mesure ${Math.floor(t / (24 * bpb)) + 1}.${Math.floor(t / 24) % bpb + 1}`;
+  $('#clockPos').textContent = `BPM · ${clock.running ? pos : 'à l’arrêt'} · ${clock.port}`;
 }
 function checkLoop() {
   const def = cfg.settings.defaultOutput;
@@ -1379,6 +1471,7 @@ function renderSettings() {
   $('#setVel0').checked = s.vel0off;
   $('#setClock').checked = s.hideClock;
   $('#setMiddleC').value = s.middleC;
+  $('#beatsPerBar').value = s.beatsPerBar;
   $('#bypass').checked = s.bypass;
   applyTheme();
 }
@@ -1471,6 +1564,9 @@ function renderAll() { renderSettings(); renderPorts(); renderRules(); renderKey
 
 function initUI() {
   const s = () => cfg.settings;
+  $('#clockSrc').onchange = e => { s().clockSource = e.target.value; clock.port = null; save(); };
+  $('#beatsPerBar').oninput = e => { s().beatsPerBar = e.target.value; save(); };
+  setInterval(updateClockView, 200);
   $('#setThru').onchange = e => { s().thru = e.target.checked; save(); };
   $('#setVel0').onchange = e => { s().vel0off = e.target.checked; save(); };
   $('#setClock').onchange = e => { s().hideClock = e.target.checked; save(); };
@@ -1483,6 +1579,7 @@ function initUI() {
       for (let c = 0; c < 16; c++) { try { o.send([0xB0 | c, 123, 0]); o.send([0xB0 | c, 120, 0]); n++; } catch (e) { /* port fermé */ } }
     }
     rt.toggles.clear();
+    clock.pending = [];
     toast(n ? 'All Notes Off envoyé sur toutes les sorties' : 'Aucune sortie MIDI disponible');
   };
 
