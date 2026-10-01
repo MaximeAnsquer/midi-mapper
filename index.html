@@ -718,7 +718,7 @@ const srcVal = msg => msg.val ?? msg.num ?? 0;
 const adapt = (v, fromPB, toPB) => fromPB === toPB ? v : (toPB ? to14(v) : v >> 7);
 const numOr = (s, d) => { const n = parseFloat(s); return Number.isNaN(n) ? d : n; };
 
-function evalField(f, kind, msg, tgt, toggleKey) {
+function evalField(f, kind, msg, tgt, toggleKey, srcType) {
   const toPB = kind === 'val' && tgt === 'pb';
   const fromPB = msg.type === 'pb';
   const min = kind === 'ch' ? 1 : 0, max = kind === 'ch' ? 16 : (toPB ? 16383 : 127);
@@ -739,7 +739,8 @@ function evalField(f, kind, msg, tgt, toggleKey) {
     }
     case 'gate': v = isOn(msg) ? numOr(f.a, max) : numOr(f.b, min); break;
     case 'toggle': {
-      if (!isOn(msg)) return null;          // seul l'appui fait basculer
+      // seul l'appui fait basculer, sauf si la règle vise explicitement le relâchement (source Note Off)
+      if (!isOn(msg) && srcType !== 'noteoff') return null;
       const st = !rt.toggles.get(toggleKey);
       rt.toggles.set(toggleKey, st);
       v = st ? numOr(f.a, max) : numOr(f.b, min);
@@ -775,11 +776,11 @@ function buildRaw(tpl, ch, num, val) {
 function runAction(rule, ai, act, msg) {
   let t = act.type === 'same' ? msg.type : act.type;
   const key = rule.id + '/' + ai + '/' + msg.ch + '/' + msg.num;
-  const ch = evalField(act.ch, 'ch', msg, t, key);
+  const ch = evalField(act.ch, 'ch', msg, t, key, rule.src.type);
   if (ch === null) return null;
   let num = 0, val = 0;
-  if (NEEDS_NUM.has(t)) { num = evalField(act.num, 'num', msg, t, key); if (num === null) return null; }
-  if (NEEDS_VAL.has(t)) { val = evalField(act.val, 'val', msg, t, key); if (val === null) return null; }
+  if (NEEDS_NUM.has(t)) { num = evalField(act.num, 'num', msg, t, key, rule.src.type); if (num === null) return null; }
+  if (NEEDS_VAL.has(t)) { val = evalField(act.val, 'val', msg, t, key, rule.src.type); if (val === null) return null; }
   if (t === 'note') { const on = isOn(msg) && val > 0; t = on ? 'noteon' : 'noteoff'; if (!on) val = 0; }
   const delay = Math.max(0, numOr(act.delay, 0));
   const bytes = t === 'raw' ? buildRaw(act.raw, ch, num, val) : encode(t, ch, num, val);
@@ -1169,7 +1170,7 @@ function fieldRow(rule, act, kind, label, t) {
     case 'invert': params.append(desc(t === 'pb' ? '16383 − valeur' : '127 − valeur')); break;
     case 'scale': params.append(k('de'), P('a', '0'), k('à'), P('b', '127'), k('→'), P('c', '0'), k('à'), P('d', '127')); break;
     case 'gate': params.append(k('appui'), P('a', '127'), k('relâche'), P('b', '0')); break;
-    case 'toggle': params.append(k('alterne'), P('a', '127'), k('/'), P('b', '0'), desc('à chaque appui')); break;
+    case 'toggle': params.append(k('alterne'), P('a', '127'), k('/'), P('b', '0'), desc(rule.src.type === 'noteoff' ? 'à chaque relâchement' : 'à chaque appui')); break;
     case 'map': params.append(P('text', kind === 'num' ? '36=40, 38=42, *=x' : '0=127, 127=0', 'wide', v => parseMap(v, notes).error ? 'Format : source=sortie, séparés par des virgules ; *=… pour le reste ; x = ne rien envoyer' : null)); break;
     case 'fromVal': params.append(desc('la valeur (vélocité, CC…) devient le numéro')); break;
     case 'fromNum': params.append(desc('le numéro (note, CC, programme) devient la valeur')); break;
