@@ -1,0 +1,1538 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIDI Mapper</title>
+<style>
+:root {
+  --bg: #f5f4f0; --surface: #ffffff; --surface-2: #f3f1ec; --surface-3: #e9e6df;
+  --border: #e3dfd6; --border-strong: #cdc8bc;
+  --text: #1c1b19; --muted: #6b675e; --faint: #9a958b;
+  --accent: #5146d9; --accent-soft: rgba(81,70,217,.10); --on-accent: #fff;
+  --in: #0d8a5d; --in-soft: rgba(13,138,93,.12);
+  --out: #c05f08; --out-soft: rgba(192,95,8,.12);
+  --danger: #c53030; --danger-soft: rgba(197,48,48,.10);
+  --t-note: #5146d9; --t-cc: #0f7f86; --t-pc: #b4387a; --t-pb: #2563eb; --t-at: #7c6f55; --t-sys: #8a8a8a;
+  --shadow: 0 1px 2px rgba(30,25,15,.05), 0 6px 24px rgba(30,25,15,.05);
+  --radius: 14px; --radius-s: 9px;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e0e11; --surface: #16161b; --surface-2: #1d1d23; --surface-3: #26262e;
+    --border: #2a2a32; --border-strong: #3b3b46;
+    --text: #ececf1; --muted: #a0a0ad; --faint: #6c6c79;
+    --accent: #918aff; --accent-soft: rgba(145,138,255,.14); --on-accent: #0e0e11;
+    --in: #3ad69d; --in-soft: rgba(58,214,157,.12);
+    --out: #fbb63c; --out-soft: rgba(251,182,60,.12);
+    --danger: #f87171; --danger-soft: rgba(248,113,113,.12);
+    --t-note: #918aff; --t-cc: #4fd1c5; --t-pc: #f472b6; --t-pb: #60a5fa; --t-at: #c8b88a; --t-sys: #8a8a96;
+    --shadow: 0 1px 2px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e0e11; --surface: #16161b; --surface-2: #1d1d23; --surface-3: #26262e;
+  --border: #2a2a32; --border-strong: #3b3b46;
+  --text: #ececf1; --muted: #a0a0ad; --faint: #6c6c79;
+  --accent: #918aff; --accent-soft: rgba(145,138,255,.14); --on-accent: #0e0e11;
+  --in: #3ad69d; --in-soft: rgba(58,214,157,.12);
+  --out: #fbb63c; --out-soft: rgba(251,182,60,.12);
+  --danger: #f87171; --danger-soft: rgba(248,113,113,.12);
+  --t-note: #918aff; --t-cc: #4fd1c5; --t-pc: #f472b6; --t-pb: #60a5fa; --t-at: #c8b88a; --t-sys: #8a8a96;
+  --shadow: 0 1px 2px rgba(0,0,0,.35);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -.01em; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.mono { font-family: var(--mono); }
+[hidden] { display: none !important; }
+
+/* ---------- Top bar ---------- */
+.topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { flex: none; color: var(--accent); }
+.brand h1 { font-size: 17px; }
+.brand .sub { font-size: 12px; color: var(--muted); }
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.pill.ok .dot { background: var(--in); box-shadow: 0 0 0 3px var(--in-soft); }
+.pill.err { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.pill.err .dot { background: var(--danger); }
+.pill.warn .dot { background: var(--out); }
+
+/* ---------- Buttons & inputs ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: var(--radius-s); border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 550; white-space: nowrap; transition: background .12s, border-color .12s; }
+.btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.danger { color: var(--danger); }
+.btn.small { height: 26px; padding: 0 9px; font-size: 12px; }
+.btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.icon-btn { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.icon-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+.icon-btn:disabled { opacity: .3; cursor: default; }
+.icon-btn.danger:hover:not(:disabled) { color: var(--danger); background: var(--danger-soft); }
+svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.field, select.sel { height: 32px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 0 9px; min-width: 0; outline: none; transition: border-color .12s, box-shadow .12s; }
+select.sel { padding-right: 26px; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; cursor: pointer; }
+.field:focus, select.sel:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.field::placeholder { color: var(--faint); }
+.field.n { width: 66px; text-align: center; font-family: var(--mono); font-size: 13px; }
+.field.wide { flex: 1 1 180px; font-family: var(--mono); font-size: 13px; }
+
+.switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch .track { width: 32px; height: 19px; border-radius: 99px; background: var(--surface-3); border: 1px solid var(--border-strong); position: relative; transition: background .15s, border-color .15s; flex: none; }
+.switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(13px); }
+.switch input:focus-visible + .track { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.check { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; font-size: 13px; }
+.check input { margin: 2px 0 0; accent-color: var(--accent); width: 15px; height: 15px; flex: none; }
+.check small { display: block; color: var(--muted); font-size: 12px; }
+
+/* ---------- Layout ---------- */
+.layout { display: grid; gap: 18px; padding: 18px 20px 40px; grid-template-columns: 260px minmax(0, 1fr) minmax(340px, 390px); grid-template-areas: "side rules mon"; align-items: start; max-width: 1900px; margin: 0 auto; }
+.side { grid-area: side; display: flex; flex-direction: column; gap: 14px; }
+.rules-col { grid-area: rules; min-width: 0; container-type: inline-size; }
+.monitor-col { grid-area: mon; position: sticky; top: 76px; }
+@media (max-width: 1320px) {
+  .layout { grid-template-columns: 280px minmax(0, 1fr); grid-template-areas: "side rules" "side mon"; }
+  .monitor-col { position: static; }
+}
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "rules" "mon" "side"; padding: 14px 16px 32px; }
+  .topbar { padding: 10px 16px; flex-wrap: wrap; }
+  .brand .sub { display: none; }
+}
+
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); }
+.panel > h2 { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.hint code, .lead code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > .field, .row > select.sel { flex: 1; }
+
+/* Ports */
+.ports { display: flex; flex-direction: column; gap: 2px; }
+.port { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.port:hover { background: var(--surface-2); }
+.port input { accent-color: var(--accent); margin: 0; flex: none; }
+.port .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.port .tagv { font-size: 10.5px; color: var(--faint); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; }
+.port.missing .name { color: var(--faint); font-style: italic; }
+.led { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--border-strong); flex: none; transition: background .25s, box-shadow .25s; }
+.led.in.on { background: var(--in); border-color: var(--in); box-shadow: 0 0 0 3px var(--in-soft); transition: none; }
+.led.out.on { background: var(--out); border-color: var(--out); box-shadow: 0 0 0 3px var(--out-soft); transition: none; }
+.warnbox { margin-top: 8px; font-size: 12px; color: var(--out); background: var(--out-soft); border-radius: 8px; padding: 7px 9px; }
+
+/* ---------- Rules ---------- */
+.col-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.col-head h2 { font-size: 13px; }
+.col-head .count { color: var(--faint); font-size: 12px; font-weight: 500; }
+.col-head .grow { flex: 1; }
+.lead { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; max-width: 80ch; }
+#rules { display: flex; flex-direction: column; gap: 12px; }
+
+.menu-wrap { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(400px, 90vw); max-height: 70vh; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0,0,0,.18); padding: 6px; }
+.menu button { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; }
+.menu button:hover, .menu button:focus-visible { background: var(--surface-2); outline: none; }
+.menu b { display: block; font-weight: 600; font-size: 13px; }
+.menu span { display: block; font-size: 12px; color: var(--muted); }
+.menu .sep { height: 1px; background: var(--border); margin: 5px 6px; }
+
+.rule { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); transition: border-color .2s, opacity .2s; }
+.rule.disabled { opacity: .55; }
+.rule.disabled .rule-sum { text-decoration: line-through; text-decoration-color: var(--faint); }
+.rule.learning { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+.rule.hit .hits { animation: hit .5s ease-out; }
+@keyframes hit { 0% { background: var(--in); color: var(--surface); } 100% { background: var(--surface-2); } }
+.rule-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; }
+.rule-idx { font: 600 11px var(--mono); color: var(--faint); width: 16px; text-align: center; flex: none; }
+.rule-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rule-name { border: 0; background: transparent; font-weight: 620; font-size: 14.5px; padding: 2px 4px; margin-left: -4px; border-radius: 6px; outline: none; width: 100%; }
+.rule-name:hover { background: var(--surface-2); }
+.rule-name:focus { background: var(--surface-2); box-shadow: 0 0 0 2px var(--accent-soft); }
+.rule-sum { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 6px; font-family: var(--mono); font-size: 11.5px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.chip.src { background: var(--in-soft); color: var(--in); }
+.chip.dst { background: var(--out-soft); color: var(--out); }
+.chip.blk { background: var(--danger-soft); color: var(--danger); }
+.rule-sum .arr { color: var(--faint); }
+.hits { font: 600 11.5px var(--mono); min-width: 30px; height: 22px; padding: 0 7px; display: grid; place-items: center; border-radius: 99px; background: var(--surface-2); color: var(--muted); flex: none; }
+.rule-tools { display: flex; align-items: center; gap: 1px; flex: none; }
+.rule-tools .btn { margin-right: 4px; }
+.rule-body { border-top: 1px solid var(--border); padding: 14px; }
+.rule-grid { display: grid; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1.55fr); gap: 10px; align-items: start; }
+.flow-arrow { display: grid; place-items: center; color: var(--faint); padding-top: 34px; }
+@container (max-width: 700px) {
+  .rule-grid { grid-template-columns: minmax(0, 1fr); }
+  .flow-arrow { padding: 0; transform: rotate(90deg); height: 18px; }
+}
+@container (max-width: 600px) {
+  .rule-tools .lbl { display: none; }
+}
+@container (max-width: 520px) {
+  .rule-head { flex-wrap: wrap; }
+  .rule-tools { width: 100%; justify-content: flex-end; }
+}
+.pane { background: var(--surface-2); border-radius: 11px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pane-title { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.tag { font: 700 10.5px var(--sans); letter-spacing: .07em; padding: 3px 7px; border-radius: 6px; }
+.tag.in { background: var(--in-soft); color: var(--in); }
+.tag.out { background: var(--out-soft); color: var(--out); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.f > span { font-size: 11.5px; color: var(--muted); font-weight: 550; }
+.f .field, .f select.sel { width: 100%; }
+.f .field { font-family: var(--mono); font-size: 13px; }
+.pane .field, .pane select.sel { background: var(--surface); }
+
+.act { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.act-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.act-n { font: 600 11px var(--mono); color: var(--out); background: var(--out-soft); border-radius: 6px; width: 22px; height: 22px; display: grid; place-items: center; flex: none; }
+.act-head .act-type { flex: 1 1 170px; font-weight: 550; }
+.act-head .act-port { flex: 1 1 150px; }
+.act-head .icon-btn { margin-left: auto; }
+.frow { display: grid; grid-template-columns: 96px minmax(130px, 190px) minmax(0, 1fr); gap: 8px; align-items: center; }
+.frow .flabel { font-size: 12px; color: var(--muted); font-weight: 550; }
+.params { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.params .k { font-size: 12px; color: var(--faint); }
+.params .desc { font-size: 12px; color: var(--muted); }
+@container (max-width: 560px) {
+  .frow { grid-template-columns: 1fr 1.3fr; }
+  .frow .params { grid-column: 1 / -1; }
+}
+.act-extra { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding-top: 4px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--muted); }
+.act-extra label { display: inline-flex; align-items: center; gap: 6px; }
+.act-hint { font-size: 12px; color: var(--muted); background: var(--surface-2); border-radius: 7px; padding: 6px 9px; }
+.act-hint code { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+.blocked-note { margin: 0; font-size: 12.5px; color: var(--danger); background: var(--danger-soft); padding: 8px 10px; border-radius: 8px; }
+.add-act { align-self: flex-start; }
+.rule-opts { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 12px; }
+
+.empty { text-align: center; padding: 34px 20px; border: 1.5px dashed var(--border-strong); border-radius: var(--radius); color: var(--muted); }
+.empty h3 { color: var(--text); font-size: 16px; margin-bottom: 6px; }
+.empty .tpls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+
+/* ---------- Monitor ---------- */
+.monitor { display: flex; flex-direction: column; gap: 12px; padding: 14px; max-height: calc(100vh - 100px); }
+@media (max-width: 1320px) { .monitor { max-height: 640px; } }
+.mon-head { display: flex; align-items: center; gap: 10px; }
+.mon-head .stats { margin-left: auto; display: flex; gap: 12px; font: 12px var(--mono); color: var(--muted); }
+.stats .s-in b { color: var(--in); font-weight: 600; }
+.stats .s-out b { color: var(--out); font-weight: 600; }
+.kbd-box { background: var(--surface-2); border-radius: 11px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.kbd-ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.kbd-ctrl .oct { font: 600 12px var(--mono); color: var(--text); min-width: 46px; text-align: center; }
+.kbd-ctrl input[type=range] { width: 70px; accent-color: var(--accent); }
+.kbd-ctrl .grow { flex: 1; }
+.kbd { position: relative; height: 74px; display: flex; user-select: none; touch-action: none; }
+.kbd .w { flex: 1; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 0 0 6px 6px; margin-right: -1px; position: relative; cursor: pointer; }
+.kbd .w span { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font: 9.5px var(--mono); color: var(--faint); pointer-events: none; }
+.kbd .b { position: absolute; top: 0; height: 60%; background: #23232a; border-radius: 0 0 4px 4px; z-index: 2; cursor: pointer; }
+:root[data-theme="dark"] .kbd .b { background: #050507; border: 1px solid #3b3b46; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .kbd .b { background: #050507; border: 1px solid #3b3b46; } }
+.kbd .down { background: var(--accent) !important; border-color: var(--accent) !important; }
+.mon-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 2px; }
+.seg button { border: 0; background: transparent; padding: 4px 10px; border-radius: 7px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.mon-tools .grow { flex: 1; }
+.log { flex: 1; min-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); font: 12px/1.5 var(--mono); }
+.log:empty::before { content: "Les messages reçus et envoyés s'afficheront ici. Joue une note sur ton contrôleur, sur le clavier ci-dessus, ou clique « Tester » sur une règle."; display: block; padding: 28px 22px; color: var(--faint); font-family: var(--sans); font-size: 12.5px; text-align: center; }
+.log:not(.show-hex) .hx { display: none; }
+.log[data-filter="matched"] .ev:not(.matched) { display: none; }
+.log[data-filter="unmatched"] .ev.matched { display: none; }
+.ev { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.ev:first-child { animation: fadein .3s ease-out; }
+@keyframes fadein { from { background: var(--accent-soft); } }
+.ln { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.ln + .ln { margin-top: 2px; }
+.ln .d { font-size: 10.5px; white-space: nowrap; }
+.ln.in .d { color: var(--in); }
+.ln.out .d { color: var(--out); }
+.ln.note .d { color: var(--faint); }
+.ln .m { min-width: 0; overflow-wrap: anywhere; }
+.ln .hx { color: var(--faint); font-size: 11px; white-space: nowrap; }
+.ln .p { color: var(--muted); }
+.ln .r { font-family: var(--sans); font-size: 11px; color: var(--muted); background: var(--surface-3); border-radius: 5px; padding: 0 6px; margin-left: 4px; }
+.ln .t { color: var(--faint); font-size: 10.5px; margin-left: 4px; }
+.ln.note .m { color: var(--faint); font-family: var(--sans); font-size: 11.5px; }
+.ln.err .m { color: var(--danger); font-family: var(--sans); font-size: 11.5px; }
+.tb { font-weight: 650; }
+.tb.note { color: var(--t-note); } .tb.cc { color: var(--t-cc); } .tb.pc { color: var(--t-pc); } .tb.pb { color: var(--t-pb); } .tb.at { color: var(--t-at); } .tb.sys { color: var(--t-sys); }
+.kv { color: var(--faint); }
+
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(20px); opacity: 0; z-index: 50; display: flex; align-items: center; gap: 12px; background: var(--text); color: var(--bg); padding: 9px 10px 9px 16px; border-radius: 11px; box-shadow: 0 10px 30px rgba(0,0,0,.25); font-size: 13px; transition: opacity .2s, transform .2s; pointer-events: none; max-width: calc(100vw - 32px); }
+.toast.show { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+.toast button { background: transparent; border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); color: var(--bg); border-radius: 7px; padding: 3px 10px; cursor: pointer; font-weight: 600; }
+.toast:not(.has-action) { padding-right: 16px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" stroke-width="2.4"/><g fill="currentColor"><circle cx="9" cy="17" r="2"/><circle cx="23" cy="17" r="2"/><circle cx="11.2" cy="11.2" r="2"/><circle cx="20.8" cy="11.2" r="2"/><circle cx="16" cy="9" r="2"/></g><rect x="13" y="25" width="6" height="3" rx="1" fill="currentColor"/></svg>
+    <div><h1>MIDI Mapper</h1><div class="sub">Convertit et redirige des messages MIDI, en direct</div></div>
+  </div>
+  <div class="top-actions">
+    <span id="midiStatus" class="pill"><span class="dot"></span><span class="txt">Connexion MIDI…</span></span>
+    <label class="switch" title="Contourne toutes les règles : les messages passent tels quels vers la sortie par défaut"><input type="checkbox" id="bypass"><span class="track"></span>Bypass</label>
+    <button class="btn" id="panicBtn" title="Envoie All Notes Off et All Sound Off sur toutes les sorties et tous les canaux">Panique</button>
+    <button class="icon-btn" id="themeBtn" title="Thème"></button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="side">
+    <section class="panel">
+      <h2>Entrées <span class="count" id="inCount"></span></h2>
+      <div class="ports" id="inputs"></div>
+      <p class="hint">Les entrées cochées sont écoutées. Chaque règle peut aussi se limiter à une entrée précise.</p>
+    </section>
+    <section class="panel">
+      <h2>Sortie par défaut</h2>
+      <div class="ports" id="outputs"></div>
+      <div id="loopWarn" class="warnbox" hidden></div>
+      <p class="hint">Chaque sortie d'une règle peut viser un autre port. Sur Mac, pour envoyer vers un logiciel (DAW…), active le <b>bus IAC</b> dans <i>Configuration audio et MIDI</i>.</p>
+    </section>
+    <section class="panel">
+      <h2>Réglages</h2>
+      <div class="stack">
+        <label class="check"><input type="checkbox" id="setThru"><span>Laisser passer les messages non convertis<small>Les messages qui ne correspondent à aucune règle sont envoyés tels quels sur la sortie par défaut.</small></span></label>
+        <label class="check"><input type="checkbox" id="setVel0"><span>Note On à vélocité 0 = Note Off<small>Convention MIDI utilisée par la plupart des claviers.</small></span></label>
+        <label class="check"><input type="checkbox" id="setClock"><span>Masquer horloge et Active Sensing<small>Dans le moniteur uniquement ; ils restent transmis si « laisser passer » est actif.</small></span></label>
+        <div class="row"><span style="font-size:13px;flex:1">Note 60 (do central)</span><select class="sel" id="setMiddleC" style="flex:none;width:96px"><option value="C4">C4 / Do4</option><option value="C3">C3 / Do3</option></select></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Configurations</h2>
+      <div class="stack">
+        <div class="row"><select class="sel" id="presetSel"></select><button class="btn" id="presetLoad">Charger</button><button class="icon-btn danger" id="presetDel" title="Supprimer cette configuration"></button></div>
+        <div class="row"><input class="field" id="presetName" placeholder="Nom (ex. Live, Studio…)"><button class="btn" id="presetSave">Enregistrer</button></div>
+        <div class="row"><button class="btn" id="exportBtn" style="flex:1">Exporter JSON</button><button class="btn" id="importBtn" style="flex:1">Importer JSON</button><input type="file" id="importFile" accept=".json,application/json" hidden></div>
+        <button class="btn ghost danger" id="resetBtn">Réinitialiser</button>
+      </div>
+      <p class="hint" id="cloudStatus">La configuration en cours est enregistrée automatiquement dans ce navigateur.</p>
+    </section>
+  </aside>
+
+  <section class="rules-col">
+    <div class="col-head">
+      <h2>Règles de conversion <span class="count" id="ruleCount"></span></h2>
+      <span class="grow"></span>
+      <div class="menu-wrap">
+        <button class="btn" id="tplBtn" aria-haspopup="true">Modèles <svg class="i" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu" id="tplMenu" hidden></div>
+      </div>
+      <button class="btn primary" id="addRule"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nouvelle règle</button>
+    </div>
+    <p class="lead">Chaque message reçu est comparé aux règles, de haut en bas. Toutes les règles qui correspondent s'appliquent (sauf si l'une d'elles « arrête » la suite) et chacune peut envoyer un ou plusieurs messages. Utilise <b>Apprendre</b> pour remplir une condition en jouant simplement le message.</p>
+    <div id="rules"></div>
+  </section>
+
+  <section class="monitor-col">
+    <div class="panel monitor">
+      <div class="mon-head">
+        <h2>Moniteur</h2>
+        <div class="stats"><span class="s-in">reçus <b id="statIn">0</b></span><span class="s-out">envoyés <b id="statOut">0</b></span></div>
+      </div>
+      <div class="kbd-box">
+        <div class="kbd-ctrl">
+          <span>Clavier</span>
+          <button class="icon-btn" id="octDown" title="Octave inférieure"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span class="oct" id="octLbl"></span>
+          <button class="icon-btn" id="octUp" title="Octave supérieure"><svg class="i" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+          <span class="grow"></span>
+          <label>vél. <input type="range" id="kbdVel" min="1" max="127" value="100"></label><span class="mono" id="kbdVelLbl" style="width:24px">100</span>
+          <select class="sel" id="kbdCh" title="Canal du clavier virtuel" style="height:26px;font-size:12px"></select>
+        </div>
+        <div class="kbd" id="kbd"></div>
+      </div>
+      <div class="mon-tools">
+        <div class="seg" id="logFilter"><button data-f="all" class="on">Tout</button><button data-f="matched">Convertis</button><button data-f="unmatched">Ignorés</button></div>
+        <span class="grow"></span>
+        <button class="btn small" id="hexBtn" title="Afficher les octets en hexadécimal">Hex</button>
+        <button class="btn small" id="pauseBtn">Pause</button>
+        <button class="btn small" id="clearBtn">Effacer</button>
+      </div>
+      <div class="log" id="log" data-filter="all"></div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status"><span class="msg"></span><button hidden>Annuler</button></div>
+
+<script>
+'use strict';
+
+/* =====================================================================
+   Constantes
+   ===================================================================== */
+const STORE = 'midiMapper.config.v1';
+const PRESETS = 'midiMapper.presets.v1';
+const VKEY = 'Clavier virtuel';
+const TEST = 'Test';
+const LOG_MAX = 300;
+
+const T = {
+  noteon:  { label: 'Note On',                 short: 'Note On',  num: 'Note',      val: 'Vélocité',  note: true, cls: 'note' },
+  noteoff: { label: 'Note Off',                short: 'Note Off', num: 'Note',      val: 'Vélocité',  note: true, cls: 'note' },
+  cc:      { label: 'Control Change (CC)',     short: 'CC',       num: 'N° de CC',  val: 'Valeur',    cls: 'cc' },
+  pc:      { label: 'Program Change',          short: 'PC',       num: 'Programme', val: null,        cls: 'pc' },
+  pb:      { label: 'Pitch Bend',              short: 'Pitch Bend', num: null,      val: 'Valeur (0–16383)', cls: 'pb' },
+  cat:     { label: 'Aftertouch (canal)',      short: 'Aftertouch', num: null,      val: 'Pression',  cls: 'at' },
+  pat:     { label: 'Aftertouch polyphonique', short: 'Poly AT',  num: 'Note',      val: 'Pression',  note: true, cls: 'at' },
+};
+const SRC_TYPES = [
+  ['any', 'Tout message de canal'], ['note', 'Note On + Note Off'], ['noteon', 'Note On'], ['noteoff', 'Note Off'],
+  ['cc', T.cc.label], ['pc', T.pc.label], ['pb', T.pb.label], ['cat', T.cat.label], ['pat', T.pat.label],
+];
+const TGT_TYPES = [
+  ['same', 'Même type que la source'], ['note', 'Note (On/Off selon la source)'], ['noteon', 'Note On'], ['noteoff', 'Note Off'],
+  ['cc', T.cc.label], ['pc', T.pc.label], ['pb', T.pb.label], ['cat', T.cat.label], ['pat', T.pat.label],
+  ['raw', 'Octets bruts / SysEx'],
+];
+const MODES = {
+  ch:  [['same', 'Identique'], ['fixed', 'Fixe'], ['offset', 'Décalage'], ['expr', 'Expression']],
+  num: [['same', 'Identique'], ['fixed', 'Fixe'], ['offset', 'Décalage / transposition'], ['map', 'Table de correspondance'], ['fromVal', '← valeur de la source'], ['expr', 'Expression']],
+  val: [['same', 'Identique'], ['fixed', 'Fixe'], ['scale', 'Mise à l\'échelle'], ['invert', 'Inversée'], ['gate', 'Appui / relâche'], ['toggle', 'Bascule (toggle)'], ['offset', 'Décalage'], ['map', 'Table de correspondance'], ['fromNum', '← numéro de la source'], ['expr', 'Expression']],
+};
+
+function srcInfo(t) {
+  if (t === 'any') return { num: 'Numéro (note, CC…)', val: 'Valeur', note: true };
+  if (t === 'note') return { num: 'Note', val: 'Vélocité', note: true };
+  return T[t];
+}
+function tgtInfo(t) {
+  if (t === 'same') return { num: 'Numéro', val: 'Valeur', note: false };
+  if (t === 'note') return { num: 'Note', val: 'Vélocité', note: true };
+  if (t === 'raw') return { num: '{num}', val: '{val}', note: false };
+  return T[t];
+}
+
+/* =====================================================================
+   Modèle de configuration
+   ===================================================================== */
+const uid = () => Math.random().toString(36).slice(2, 10);
+const F = (mode = 'same', a = '', b = '', c = '', d = '', text = '') => ({ mode, a: String(a), b: String(b), c: String(c), d: String(d), text });
+function A(type = 'cc', o = {}) {
+  return Object.assign({ id: uid(), output: 'default', type, ch: F('same'), num: F('fixed', '1'), val: F('same'), delay: '0', pulse: '0', raw: 'F0 7D {num} {val} F7' }, o);
+}
+function R(name, src = {}, actions = [], o = {}) {
+  return Object.assign({ id: uid(), name, enabled: true, open: true, stop: false, passOriginal: false,
+    src: Object.assign({ input: '*', type: 'noteon', ch: '', num: '', val: '' }, src), actions }, o);
+}
+
+const TEMPLATES = [
+  { name: 'Note On → CC', desc: 'Une touche envoie un CC avec une valeur fixe.',
+    make: () => [R('Note → CC 20', { type: 'noteon', num: '60' }, [A('cc', { num: F('fixed', 20), val: F('fixed', 127) })])] },
+  { name: 'Note On → CC A · Note Off → CC B', desc: 'L’appui et le relâchement d’une touche envoient deux CC différents (2 règles).',
+    make: () => [
+      R('Appui → CC 20', { type: 'noteon', num: '60' }, [A('cc', { num: F('fixed', 20), val: F('fixed', 127) })]),
+      R('Relâche → CC 21', { type: 'noteoff', num: '60' }, [A('cc', { num: F('fixed', 21), val: F('fixed', 127) })]),
+    ] },
+  { name: 'Note → CC momentané', desc: 'Un seul CC : 127 à l’appui, 0 au relâchement (comme une pédale).',
+    make: () => [R('Note → CC 64 momentané', { type: 'note', num: '60' }, [A('cc', { num: F('fixed', 64), val: F('gate', 127, 0) })])] },
+  { name: 'Note → CC bascule', desc: 'Chaque appui alterne le CC entre 127 et 0 (interrupteur).',
+    make: () => [R('Note → CC 80 bascule', { type: 'noteon', num: '60' }, [A('cc', { num: F('fixed', 80), val: F('toggle', 127, 0) })])] },
+  { name: 'Vélocité → CC', desc: 'La vélocité de la note devient la valeur du CC.',
+    make: () => [R('Vélocité → CC 1', { type: 'noteon' }, [A('cc', { num: F('fixed', 1), val: F('same') })])] },
+  { name: 'Note → Program Change', desc: 'Les notes 48 à 59 choisissent les programmes 0 à 11.',
+    make: () => [R('Notes → programmes', { type: 'noteon', num: '48-59' }, [A('pc', { num: F('offset', -48) })])] },
+  { sep: true },
+  { name: 'CC → CC (renuméroter)', desc: 'Ex. la molette (CC 1) pilote l’expression (CC 11).',
+    make: () => [R('CC 1 → CC 11', { type: 'cc', num: '1' }, [A('cc', { num: F('fixed', 11), val: F('same') })])] },
+  { name: 'CC → CC mis à l’échelle', desc: 'Réduit une course 0–127 à 20–100 (ou inverse-la).',
+    make: () => [R('CC 7 borné 20–100', { type: 'cc', num: '7' }, [A('cc', { num: F('same'), val: F('scale', 0, 127, 20, 100) })])] },
+  { name: 'CC → Note', desc: 'CC ≥ 64 joue une note, < 64 la relâche (ex. pédale → grosse caisse).',
+    make: () => [R('Pédale → note 36', { type: 'cc', num: '64' }, [A('note', { num: F('fixed', 36), val: F('gate', 100, 0) })])] },
+  { name: 'Pitch Bend → CC', desc: 'Le pitch bend (14 bits) est converti en CC 0–127.',
+    make: () => [R('Pitch Bend → CC 2', { type: 'pb' }, [A('cc', { num: F('fixed', 2), val: F('same') })])] },
+  { sep: true },
+  { name: 'Transposition', desc: 'Toutes les notes montées d’une octave.',
+    make: () => [R('Transposition +12', { type: 'note' }, [A('same', { num: F('offset', 12) })])] },
+  { name: 'Changement de canal', desc: 'Tous les messages ressortent sur le canal 2.',
+    make: () => [R('Tout → canal 2', { type: 'any' }, [A('same', { ch: F('fixed', 2), num: F('same') })])] },
+  { name: 'Split clavier', desc: 'Notes sous 60 sur le canal 2, au-dessus sur le canal 1.',
+    make: () => [
+      R('Main gauche → canal 2', { type: 'note', num: '0-59' }, [A('same', { ch: F('fixed', 2), num: F('same') })]),
+      R('Main droite → canal 1', { type: 'note', num: '60-127' }, [A('same', { ch: F('fixed', 1), num: F('same') })]),
+    ] },
+  { name: 'Courbe de vélocité', desc: 'Rend le toucher plus léger (expression mathématique).',
+    make: () => [R('Courbe de vélocité', { type: 'note' }, [A('note', { num: F('same'), val: F('expr', '', '', '', '', 'round(127 * pow(val / 127, 0.6))') })])] },
+  { name: 'Accord', desc: 'Une note déclenche un accord majeur (3 sorties).',
+    make: () => [R('Note → accord majeur', { type: 'note' }, [A('same', { num: F('same') }), A('same', { num: F('offset', 4) }), A('same', { num: F('offset', 7) })])] },
+  { name: 'Table de correspondance', desc: 'Remappe des notes une à une (ex. pads de batterie).',
+    make: () => [R('Remap batterie', { type: 'note', num: '36,38,42' }, [A('same', { num: F('map', '', '', '', '', '36=35, 38=40, 42=44') })])] },
+  { name: 'Bloquer un type', desc: 'Absorbe l’aftertouch (règle sans sortie).',
+    make: () => [R('Bloquer l’aftertouch', { type: 'cat' }, [], { stop: true })] },
+  { name: 'SysEx / octets bruts', desc: 'Envoie une trame personnalisée avec variables.',
+    make: () => [R('Note → SysEx', { type: 'noteon' }, [A('raw', { num: F('same'), val: F('same'), raw: 'F0 7D {num} {val} F7' })])] },
+];
+
+function defaultConfig() {
+  return {
+    version: 1,
+    settings: { inputs: {}, defaultOutput: '', thru: false, vel0off: true, hideClock: true, middleC: 'C4', bypass: false, theme: 'auto', kbdOct: 4, kbdCh: 1 },
+    rules: TEMPLATES[1].make().map(r => (r.open = false, r)),
+  };
+}
+function normField(f) { return Object.assign(F(), f || {}); }
+function normRule(r) {
+  const base = R(r.name || 'Règle');
+  const out = Object.assign(base, r, { src: Object.assign(base.src, r.src || {}) });
+  out.actions = (r.actions || []).map(a => {
+    const x = Object.assign(A(a.type || 'cc'), a);
+    x.ch = normField(a.ch); x.num = normField(a.num); x.val = normField(a.val);
+    x.id = x.id || uid();
+    return x;
+  });
+  out.id = out.id || uid();
+  return out;
+}
+function normalizeConfig(c) {
+  const d = defaultConfig();
+  return { version: 1, settings: Object.assign(d.settings, c && c.settings || {}), rules: Array.isArray(c && c.rules) ? c.rules.map(normRule) : d.rules };
+}
+function loadConfig() {
+  try { const raw = localStorage.getItem(STORE); if (raw) return normalizeConfig(JSON.parse(raw)); } catch (e) { /* stockage indisponible */ }
+  return defaultConfig();
+}
+let cfg = loadConfig();
+let saveTimer;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignore */ } cloudSave(); }, 150);
+}
+
+/* Sauvegarde dans le compte claude.ai (quand la page est un Artifact) — privée à chaque personne */
+const cloud = { doc: null, ready: false, timer: 0 };
+function cloudSave() {
+  if (!cloud.ready) return;
+  clearTimeout(cloud.timer);
+  cloud.timer = setTimeout(() => {
+    let presets = '{}'; try { presets = localStorage.getItem(PRESETS) || '{}'; } catch (e) { /* ignore */ }
+    cloud.doc.set({ config: JSON.stringify(cfg), presets, savedAt: Date.now() })
+      .then(() => setCloud('Configuration enregistrée dans ton compte'))
+      .catch(e => setCloud('Échec de l’enregistrement en ligne (' + (e.code || e.message) + ')', true));
+  }, 800);
+}
+function setCloud(text, err) { const el = document.getElementById('cloudStatus'); if (el) { el.textContent = text; el.style.color = err ? 'var(--danger)' : ''; } }
+async function initCloud() {
+  if (!window.claude || !window.claude.use) return;
+  try {
+    const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
+    const id = user && await user.id();
+    if (!db || !id) { setCloud('Enregistrement en ligne indisponible : configuration gardée dans ce navigateur'); return; }
+    cloud.doc = db.doc('data/users/' + id + '/config');
+    const snap = await cloud.doc.get();
+    if (snap.exists) {
+      const d = snap.data();
+      try { if (d.presets) localStorage.setItem(PRESETS, d.presets); } catch (e) { /* ignore */ }
+      if (d.config) { cfg = normalizeConfig(JSON.parse(d.config)); try { localStorage.setItem(STORE, d.config); } catch (e) { /* ignore */ } renderAll(); bindInputs(); }
+      setCloud('Configuration chargée depuis ton compte');
+    }
+    cloud.ready = true;
+    if (!snap.exists) cloudSave();
+  } catch (e) { setCloud('Enregistrement en ligne indisponible (' + (e.code || e.message) + ')', true); }
+}
+const snapshot = () => JSON.parse(JSON.stringify(cfg));
+
+/* État d'exécution (non sauvegardé) */
+const rt = {
+  access: null, sysex: false, hits: {}, toggles: new Map(), learning: null, paused: false,
+  stats: { in: 0, out: 0 }, logQ: [], logRaf: 0, leds: { in: new Map(), out: new Map() },
+};
+
+/* =====================================================================
+   Notes, plages et tables
+   ===================================================================== */
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTE_BASE = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11, do: 0, re: 2, 'ré': 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11 };
+const octShift = () => cfg.settings.middleC === 'C3' ? 2 : 1;
+const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - octShift());
+
+function parseNum(tok, notes) {
+  const s = String(tok ?? '').trim();
+  if (/^[+-]?\d+(\.\d+)?$/.test(s)) return Number(s);
+  if (!notes) return NaN;
+  const m = s.match(/^(do|ré|re|mi|fa|sol|la|si|[a-g])(#|♯|b|♭)?(-?\d+)$/i);
+  if (!m) return NaN;
+  const acc = m[2] ? (m[2] === '#' || m[2] === '♯' ? 1 : -1) : 0;
+  return (parseInt(m[3], 10) + octShift()) * 12 + NOTE_BASE[m[1].toLowerCase()] + acc;
+}
+
+/* "60", "C4", "36-51", "C3-C4", "1,3,5-8", "*" (vide = tout) -> null (tout) | {ranges} | {error} */
+const setCache = new Map();
+function parseSet(str, notes) {
+  const s = String(str ?? '').trim();
+  const key = (notes ? 'n' : 'v') + cfg.settings.middleC + '|' + s;
+  if (setCache.has(key)) return setCache.get(key);
+  let res = null;
+  if (s && s !== '*' && !/^(tous|toutes|tout|any|all)$/i.test(s)) {
+    const ranges = [];
+    let error = false;
+    for (let tok of s.split(/[,;]+/)) {
+      tok = tok.replace(/\s+/g, '').replace(/\.\.|–|—|à/g, '-');
+      if (!tok) continue;
+      const single = parseNum(tok, notes);
+      if (!Number.isNaN(single)) { ranges.push([single, single]); continue; }
+      let found = false;
+      for (let i = 1; i < tok.length - 1; i++) {
+        if (tok[i] !== '-') continue;
+        const lo = parseNum(tok.slice(0, i), notes), hi = parseNum(tok.slice(i + 1), notes);
+        if (!Number.isNaN(lo) && !Number.isNaN(hi)) { ranges.push([Math.min(lo, hi), Math.max(lo, hi)]); found = true; break; }
+      }
+      if (!found) error = true;
+    }
+    res = error || !ranges.length ? { error: true, ranges } : { ranges };
+  }
+  setCache.set(key, res);
+  return res;
+}
+function inSet(set, v) {
+  if (set === null) return true;
+  if (set.error || v == null) return false;
+  return set.ranges.some(([a, b]) => v >= a && v <= b);
+}
+function describeSet(str, notes) {
+  const set = parseSet(str, notes);
+  if (set === null) return null;
+  if (set.error) return '⚠ ' + str;
+  const f = n => notes && n >= 0 && n <= 127 ? noteName(n) : String(n);
+  return set.ranges.map(([a, b]) => a === b ? f(a) : f(a) + '–' + f(b)).join(', ');
+}
+
+/* "36=40, 38=42, *=x" -> Map (clé '*' = défaut ; valeur null = ne rien envoyer) */
+const mapCache = new Map();
+function parseMap(text, notes) {
+  const key = (notes ? 'n' : 'v') + cfg.settings.middleC + '|' + text;
+  if (mapCache.has(key)) return mapCache.get(key);
+  const m = new Map();
+  let error = false;
+  for (const part of String(text || '').split(/[,;\n]+/)) {
+    if (!part.trim()) continue;
+    const mm = part.match(/^\s*(\S+?)\s*(?:=|:|→|->|>)\s*(\S+)\s*$/);
+    if (!mm) { error = true; continue; }
+    const k = mm[1] === '*' ? '*' : parseNum(mm[1], notes);
+    const v = /^(x|-|none|rien|skip)$/i.test(mm[2]) ? null : parseNum(mm[2], notes);
+    if (Number.isNaN(k) || Number.isNaN(v)) { error = true; continue; }
+    m.set(k, v);
+  }
+  m.error = error;
+  mapCache.set(key, m);
+  return m;
+}
+
+const exprCache = new Map();
+function compileExpr(src) {
+  if (exprCache.has(src)) return exprCache.get(src);
+  let fn;
+  try { fn = new Function('ch', 'num', 'val', 'type', `with (Math) { return (${src || 'null'}\n); }`); }
+  catch (e) { fn = { error: e.message }; }
+  exprCache.set(src, fn);
+  return fn;
+}
+function checkExpr(src) {
+  const fn = compileExpr(src);
+  if (fn.error) return fn.error;
+  try { fn(1, 60, 100, 'noteon'); return null; } catch (e) { return e.message; }
+}
+
+/* =====================================================================
+   Moteur : décodage, correspondance, conversion
+   ===================================================================== */
+function decode(d) {
+  const s = d[0], hi = s & 0xF0, ch = (s & 0x0F) + 1;
+  switch (hi) {
+    case 0x80: return { type: 'noteoff', ch, num: d[1], val: d[2] };
+    case 0x90: return d[2] === 0 && cfg.settings.vel0off ? { type: 'noteoff', ch, num: d[1], val: 0 } : { type: 'noteon', ch, num: d[1], val: d[2] };
+    case 0xA0: return { type: 'pat', ch, num: d[1], val: d[2] };
+    case 0xB0: return { type: 'cc', ch, num: d[1], val: d[2] };
+    case 0xC0: return { type: 'pc', ch, num: d[1], val: d[1] };
+    case 0xD0: return { type: 'cat', ch, num: null, val: d[1] };
+    case 0xE0: return { type: 'pb', ch, num: null, val: d[1] | (d[2] << 7) };
+  }
+  return null;
+}
+function encode(t, ch, num, val) {
+  const c = (ch - 1) & 0x0F;
+  switch (t) {
+    case 'noteon': return [0x90 | c, num, val];
+    case 'noteoff': return [0x80 | c, num, val];
+    case 'pat': return [0xA0 | c, num, val];
+    case 'cc': return [0xB0 | c, num, val];
+    case 'pc': return [0xC0 | c, num];
+    case 'cat': return [0xD0 | c, val];
+    case 'pb': return [0xE0 | c, val & 0x7F, (val >> 7) & 0x7F];
+  }
+  return null;
+}
+const NEEDS_NUM = new Set(['noteon', 'noteoff', 'note', 'cc', 'pc', 'pat', 'raw']);
+const NEEDS_VAL = new Set(['noteon', 'noteoff', 'note', 'cc', 'pb', 'cat', 'pat', 'raw']);
+
+function matches(src, msg, port) {
+  if (src.input !== '*' && src.input !== port) return false;
+  if (src.type === 'note') { if (msg.type !== 'noteon' && msg.type !== 'noteoff') return false; }
+  else if (src.type !== 'any' && src.type !== msg.type) return false;
+  const info = srcInfo(src.type);
+  if (!inSet(parseSet(src.ch, false), msg.ch)) return false;
+  if (info.num && String(src.num).trim() && !inSet(parseSet(src.num, true), msg.num)) return false;
+  if (info.val && String(src.val).trim() && !inSet(parseSet(src.val, false), msg.val)) return false;
+  return true;
+}
+
+/* « Appui » : note enfoncée, CC ≥ 64, pitch bend hors centre… */
+function isOn(msg) {
+  switch (msg.type) {
+    case 'noteoff': return false;
+    case 'cc': return msg.val >= 64;
+    case 'pb': return msg.val !== 8192;
+    default: return (msg.val ?? 1) > 0;
+  }
+}
+const to14 = v => v <= 64 ? v * 128 : Math.min(16383, 8192 + Math.round((v - 64) * 8191 / 63));
+const srcVal = msg => msg.val ?? msg.num ?? 0;
+const adapt = (v, fromPB, toPB) => fromPB === toPB ? v : (toPB ? to14(v) : v >> 7);
+const numOr = (s, d) => { const n = parseFloat(s); return Number.isNaN(n) ? d : n; };
+
+function evalField(f, kind, msg, tgt, toggleKey) {
+  const toPB = kind === 'val' && tgt === 'pb';
+  const fromPB = msg.type === 'pb';
+  const min = kind === 'ch' ? 1 : 0, max = kind === 'ch' ? 16 : (toPB ? 16383 : 127);
+  const same = kind === 'ch' ? msg.ch : kind === 'num' ? (msg.num ?? 0) : adapt(srcVal(msg), fromPB, toPB);
+  let v;
+  switch (f.mode) {
+    case 'same': v = same; break;
+    case 'fixed': v = parseNum(f.a, kind === 'num'); break;
+    case 'offset': v = same + numOr(f.a, 0); break;
+    case 'invert': v = max + min - same; break;
+    case 'fromVal': v = adapt(srcVal(msg), fromPB, false); break;
+    case 'fromNum': v = adapt(msg.num ?? srcVal(msg), false, toPB); break;
+    case 'scale': {
+      const a = numOr(f.a, 0), b = numOr(f.b, fromPB ? 16383 : 127), c = numOr(f.c, min), d = numOr(f.d, max);
+      const t = b === a ? 0 : (srcVal(msg) - a) / (b - a);
+      v = c + Math.max(0, Math.min(1, t)) * (d - c);
+      break;
+    }
+    case 'gate': v = isOn(msg) ? numOr(f.a, max) : numOr(f.b, min); break;
+    case 'toggle': {
+      if (!isOn(msg)) return null;          // seul l'appui fait basculer
+      const st = !rt.toggles.get(toggleKey);
+      rt.toggles.set(toggleKey, st);
+      v = st ? numOr(f.a, max) : numOr(f.b, min);
+      break;
+    }
+    case 'map': {
+      const m = parseMap(f.text, kind === 'num');
+      const k = kind === 'num' ? msg.num : kind === 'ch' ? msg.ch : srcVal(msg);
+      v = m.has(k) ? m.get(k) : m.has('*') ? m.get('*') : same;
+      break;
+    }
+    case 'expr': {
+      const fn = compileExpr(f.text);
+      if (fn.error) throw new Error('Expression invalide : ' + fn.error);
+      v = fn(msg.ch, msg.num ?? 0, srcVal(msg), msg.type);
+      break;
+    }
+    default: v = same;
+  }
+  if (v === null || v === undefined || v === false || Number.isNaN(Number(v))) return null;
+  return Math.max(min, Math.min(max, Math.round(Number(v))));
+}
+
+function buildRaw(tpl, ch, num, val) {
+  const hx = (n, w = 2) => n.toString(16).toUpperCase().padStart(w, '0');
+  const s = tpl.replace(/\{(\w+)\}/g, (m, k) => ({ ch: hx((ch - 1) & 15, 1), num: hx(num & 127), val: hx(val & 127) })[k] ?? m);
+  const bytes = s.trim().split(/[\s,]+/).filter(Boolean).map(x => /^[0-9a-f]{1,2}$/i.test(x) ? parseInt(x, 16) : NaN);
+  if (!bytes.length || bytes.some(Number.isNaN)) throw new Error('Trame hexadécimale invalide : ' + s);
+  return bytes;
+}
+
+/* Calcule les messages produits par une sortie de règle : [{bytes, delay}] ou null */
+function runAction(rule, ai, act, msg) {
+  let t = act.type === 'same' ? msg.type : act.type;
+  const key = rule.id + '/' + ai + '/' + msg.ch + '/' + msg.num;
+  const ch = evalField(act.ch, 'ch', msg, t, key);
+  if (ch === null) return null;
+  let num = 0, val = 0;
+  if (NEEDS_NUM.has(t)) { num = evalField(act.num, 'num', msg, t, key); if (num === null) return null; }
+  if (NEEDS_VAL.has(t)) { val = evalField(act.val, 'val', msg, t, key); if (val === null) return null; }
+  if (t === 'note') { const on = isOn(msg) && val > 0; t = on ? 'noteon' : 'noteoff'; if (!on) val = 0; }
+  const delay = Math.max(0, numOr(act.delay, 0));
+  const bytes = t === 'raw' ? buildRaw(act.raw, ch, num, val) : encode(t, ch, num, val);
+  const out = [{ bytes, delay }];
+  const pulse = numOr(act.pulse, 0);
+  if (t === 'noteon' && val > 0 && pulse > 0) out.push({ bytes: encode('noteoff', ch, num, 0), delay: delay + pulse });
+  return out;
+}
+
+function findOutput(name) {
+  if (!rt.access || !name) return null;
+  for (const o of rt.access.outputs.values()) if (o.name === name && o.state !== 'disconnected') return o;
+  return null;
+}
+function send(portName, bytes, delay) {
+  if (!portName) return { status: 'none' };
+  const out = findOutput(portName);
+  if (!out) return { status: 'missing' };
+  try {
+    out.send(bytes, delay > 0 ? performance.now() + delay : 0);
+    rt.stats.out++;
+    flashLed('out', portName, delay);
+    return { status: 'ok' };
+  } catch (e) { return { status: 'error', error: e.message }; }
+}
+const resolvePort = p => p === 'default' ? cfg.settings.defaultOutput : p;
+
+function handle(data, port, isTest = false) {
+  const bytes = Array.from(data);
+  const s = bytes[0];
+  rt.stats.in++;
+  flashLed('in', port);
+  const entry = { time: new Date(), port, bytes, outs: [], matched: false, test: isTest };
+
+  if (s >= 0xF0) {                                    // messages système / SysEx / temps réel
+    if (cfg.settings.thru || cfg.settings.bypass) entry.outs.push(Object.assign({ port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
+    if (!(cfg.settings.hideClock && (s === 0xF8 || s === 0xFE))) log(entry);
+    return;
+  }
+  const msg = decode(bytes);
+  if (!msg) return;
+  if (rt.learning && !isTest) learnFrom(msg);
+
+  if (cfg.settings.bypass) {
+    entry.bypass = true;
+    entry.outs.push(Object.assign({ port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
+    log(entry);
+    return;
+  }
+  for (const rule of cfg.rules) {
+    if (!rule.enabled || !matches(rule.src, msg, port)) continue;
+    entry.matched = true;
+    bumpHit(rule);
+    if (!rule.actions.length) entry.outs.push({ rule: rule.name, note: 'bloqué (règle sans sortie)' });
+    rule.actions.forEach((act, i) => {
+      try {
+        const res = runAction(rule, i, act, msg);
+        if (!res) { entry.outs.push({ rule: rule.name, note: `sortie ${i + 1} : rien à envoyer` }); return; }
+        const p = resolvePort(act.output);
+        for (const r of res) entry.outs.push(Object.assign({ rule: rule.name, port: p, bytes: r.bytes, delay: r.delay }, send(p, r.bytes, r.delay)));
+      } catch (e) { entry.outs.push({ rule: rule.name, status: 'error', error: e.message }); }
+    });
+    if (rule.passOriginal) entry.outs.push(Object.assign({ rule: rule.name, port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
+    if (rule.stop) break;
+  }
+  if (!entry.matched && cfg.settings.thru) entry.outs.push(Object.assign({ port: cfg.settings.defaultOutput, bytes, thru: true }, send(cfg.settings.defaultOutput, bytes, 0)));
+  log(entry);
+}
+
+/* =====================================================================
+   Web MIDI
+   ===================================================================== */
+async function initMIDI() {
+  if (!navigator.requestMIDIAccess) {
+    setStatus('err', 'Web MIDI indisponible : ouvre la page dans Chrome, Edge ou Opera');
+    renderPorts();
+    return;
+  }
+  try { rt.access = await navigator.requestMIDIAccess({ sysex: true }); rt.sysex = true; }
+  catch (e) {
+    try { rt.access = await navigator.requestMIDIAccess(); rt.sysex = false; }
+    catch (e2) { setStatus('err', window.top !== window ? 'MIDI bloqué dans cet artefact : ouvre midi-mapper.html dans Chrome' : 'Accès MIDI refusé (autorise le MIDI pour cette page)'); renderPorts(); return; }
+  }
+  rt.access.onstatechange = () => { renderPorts(); bindInputs(); };
+  renderPorts();
+  bindInputs();
+}
+function bindInputs() {
+  if (!rt.access) return;
+  for (const inp of rt.access.inputs.values()) {
+    const on = cfg.settings.inputs[inp.name] !== false;
+    inp.onmidimessage = on ? e => handle(e.data, inp.name) : null;
+  }
+}
+function setStatus(kind, text) {
+  const el = document.getElementById('midiStatus');
+  el.className = 'pill ' + kind;
+  el.querySelector('.txt').textContent = text;
+}
+const inputNames = () => rt.access ? [...rt.access.inputs.values()].filter(p => p.state !== 'disconnected').map(p => p.name) : [];
+const outputNames = () => rt.access ? [...rt.access.outputs.values()].filter(p => p.state !== 'disconnected').map(p => p.name) : [];
+
+/* =====================================================================
+   Utilitaires DOM
+   ===================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const PROPS = new Set(['value', 'checked', 'disabled', 'hidden', 'title', 'type', 'placeholder', 'name']);
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'html') el.innerHTML = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (PROPS.has(k)) el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+function sel(options, value, onchange, cls = '') {
+  const s = h('select', { class: 'sel ' + cls, onchange: e => onchange(e.target.value) });
+  for (const [v, label] of options) s.append(h('option', { value: v }, label));
+  s.value = value;
+  return s;
+}
+const ICONS = {
+  up: '<path d="M18 15l-6-6-6 6"/>', down: '<path d="M6 9l6 6 6-6"/>', copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', x: '<path d="M18 6L6 18M6 6l12 12"/>', play: '<path d="M7 4l13 8-13 8z"/>',
+  learn: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>', chevDown: '<path d="M6 9l6 6 6-6"/>', chevUp: '<path d="M18 15l-6-6-6 6"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>', auto: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+};
+const icon = name => `<svg class="i" viewBox="0 0 24 24">${ICONS[name]}</svg>`;
+function iconBtn(name, title, onclick, disabled = false, cls = '') {
+  return h('button', { class: 'icon-btn ' + cls, title, 'aria-label': title, onclick, disabled, html: icon(name) });
+}
+function switchEl(checked, onchange, title) {
+  return h('label', { class: 'switch', title }, h('input', { type: 'checkbox', checked, onchange: e => onchange(e.target.checked) }), h('span', { class: 'track' }));
+}
+function checkEl(label, small, checked, onchange) {
+  return h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, onchange: e => onchange(e.target.checked) }), h('span', null, label, h('small', null, small)));
+}
+
+let toastTimer;
+function toast(text, undo) {
+  const t = $('#toast'), b = $('button', t);
+  $('.msg', t).textContent = text;
+  b.hidden = !undo;
+  t.classList.toggle('has-action', !!undo);
+  b.onclick = () => { undo(); t.classList.remove('show'); };
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), undo ? 6000 : 2800);
+}
+function restore(snap) { cfg = normalizeConfig(snap); save(); renderAll(); bindInputs(); }
+
+/* =====================================================================
+   Résumés lisibles
+   ===================================================================== */
+function srcSummary(src) {
+  const info = srcInfo(src.type);
+  const parts = [src.type === 'any' ? 'Tout' : src.type === 'note' ? 'Note On/Off' : T[src.type].short];
+  const n = info.num && describeSet(src.num, info.note); if (n) parts.push(n);
+  const v = info.val && describeSet(src.val, false); if (v) parts.push((info.val === 'Vélocité' ? 'vél ' : 'val ') + v);
+  const c = describeSet(src.ch, false); if (c) parts.push('ch ' + c);
+  if (src.input !== '*') parts.push('de ' + src.input);
+  return parts.join(' · ');
+}
+function fieldStr(f, kind, notes) {
+  switch (f.mode) {
+    case 'same': return '';
+    case 'fixed': { const n = parseNum(f.a, notes); return notes && n >= 0 && n <= 127 ? noteName(n) : f.a; }
+    case 'offset': { const n = numOr(f.a, 0); return (n >= 0 ? '+' : '') + n; }
+    case 'scale': return `${f.a || 0}–${f.b || 127}→${f.c || 0}–${f.d || 127}`;
+    case 'invert': return 'inversée';
+    case 'gate': return `${f.a}/${f.b}`;
+    case 'toggle': return `${f.a}⇄${f.b}`;
+    case 'map': return 'table';
+    case 'fromVal': return '←valeur';
+    case 'fromNum': return '←numéro';
+    case 'expr': return 'ƒ(' + (f.text.length > 22 ? f.text.slice(0, 21) + '…' : f.text) + ')';
+  }
+  return '';
+}
+function actSummary(act) {
+  const t = act.type, info = tgtInfo(t);
+  if (t === 'raw') return 'Trame ' + act.raw;
+  const parts = [t === 'same' ? 'Même type' : t === 'note' ? 'Note' : T[t].short];
+  if (info.num) { const s = fieldStr(act.num, 'num', info.note); if (s) parts.push(s); }
+  if (info.val) {
+    const s = fieldStr(act.val, 'val', false);
+    if (s) parts.push('= ' + s);
+    else if (!['same', 'note', 'noteon', 'noteoff'].includes(t)) parts.push('= source');
+  }
+  const c = fieldStr(act.ch, 'ch', false); if (c) parts.push('ch ' + c);
+  let s = parts.join(' ');
+  if (numOr(act.delay, 0) > 0) s += ` +${act.delay}ms`;
+  if (act.output !== 'default') s += ' ⟶ ' + (act.output || 'aucune sortie');
+  return s;
+}
+function ruleSummaryHTML(rule) {
+  const dst = rule.actions.length
+    ? rule.actions.map(a => `<span class="chip dst">${esc(actSummary(a))}</span>`).join('')
+    : '<span class="chip blk">bloqué</span>';
+  const extra = (rule.passOriginal ? ' <span class="chip dst">+ original</span>' : '') + (rule.stop ? ' <span class="chip blk">stop</span>' : '');
+  return `<span class="chip src">${esc(srcSummary(rule.src))}</span><span class="arr">→</span>${dst}${extra}`;
+}
+function updateSummary(rule) {
+  const el = $(`.rule[data-id="${rule.id}"] .rule-sum`);
+  if (el) el.innerHTML = ruleSummaryHTML(rule);
+}
+
+/* =====================================================================
+   Rendu des règles
+   ===================================================================== */
+function renderRules() {
+  const box = $('#rules');
+  box.replaceChildren();
+  $('#ruleCount').textContent = cfg.rules.length ? `· ${cfg.rules.length}` : '';
+  if (!cfg.rules.length) { box.append(emptyState()); return; }
+  cfg.rules.forEach((r, i) => box.append(ruleCard(r, i)));
+}
+function rerenderRule(rule) {
+  const old = $(`.rule[data-id="${rule.id}"]`);
+  if (old) old.replaceWith(ruleCard(rule, cfg.rules.indexOf(rule)));
+}
+function changed(rule, rerender) { save(); rerender ? rerenderRule(rule) : updateSummary(rule); }
+
+function emptyState() {
+  const quick = [0, 1, 2, 3].map(i => h('button', { class: 'btn', onclick: () => addTemplate(TEMPLATES[i]) }, TEMPLATES[i].name));
+  return h('div', { class: 'empty' }, h('h3', null, 'Aucune règle'), h('div', null, 'Crée une règle vide ou pars d’un modèle :'), h('div', { class: 'tpls' }, quick));
+}
+
+function ruleCard(rule, idx) {
+  const n = cfg.rules.length;
+  const learning = rt.learning === rule.id;
+  const card = h('article', { class: `rule${rule.enabled ? '' : ' disabled'}${rule.open ? ' open' : ''}${learning ? ' learning' : ''}`, 'data-id': rule.id });
+  const sum = h('div', { class: 'rule-sum', html: ruleSummaryHTML(rule) });
+  card.append(h('header', { class: 'rule-head' },
+    switchEl(rule.enabled, v => { rule.enabled = v; card.classList.toggle('disabled', !v); save(); }, 'Activer / désactiver la règle'),
+    h('span', { class: 'rule-idx' }, String(idx + 1)),
+    h('div', { class: 'rule-title' },
+      h('input', { class: 'rule-name', value: rule.name, placeholder: 'Nom de la règle', 'aria-label': 'Nom de la règle', oninput: e => { rule.name = e.target.value; save(); } }),
+      sum),
+    h('span', { class: 'hits', title: 'Nombre de déclenchements', 'data-hits': rule.id }, String(rt.hits[rule.id] || 0)),
+    h('div', { class: 'rule-tools' },
+      h('button', { class: 'btn small' + (learning ? ' active' : ''), title: 'Joue un message MIDI pour remplir la condition', onclick: () => toggleLearn(rule), html: icon('learn') + `<span class="lbl">${learning ? 'J’écoute…' : 'Apprendre'}</span>` }),
+      h('button', { class: 'btn small', title: 'Simule un message correspondant à la condition', onclick: () => testRule(rule), html: icon('play') + '<span class="lbl">Tester</span>' }),
+      iconBtn('up', 'Monter', () => moveRule(rule, -1), idx === 0),
+      iconBtn('down', 'Descendre', () => moveRule(rule, 1), idx === n - 1),
+      iconBtn('copy', 'Dupliquer', () => dupRule(rule)),
+      iconBtn('trash', 'Supprimer', () => delRule(rule), false, 'danger'),
+      iconBtn(rule.open ? 'chevUp' : 'chevDown', rule.open ? 'Replier' : 'Modifier', () => { rule.open = !rule.open; save(); rerenderRule(rule); }),
+    )));
+  if (rule.open) card.append(ruleBody(rule));
+  return card;
+}
+
+function setInput(obj, key, notes, placeholder, rule) {
+  const el = h('input', { class: 'field', value: obj[key], placeholder, spellcheck: 'false' });
+  const validate = () => {
+    const set = parseSet(el.value, notes);
+    el.classList.toggle('invalid', !!(set && set.error));
+    el.title = set === null ? 'Toutes les valeurs' : set.error ? 'Syntaxe non reconnue' : describeSet(el.value, notes);
+  };
+  el.addEventListener('input', () => { obj[key] = el.value; validate(); changed(rule); });
+  validate();
+  return el;
+}
+function inputOptions(current) {
+  const names = [...new Set([...inputNames(), VKEY])];
+  const opts = [['*', 'Toutes les entrées actives'], ...names.map(n => [n, n])];
+  if (current !== '*' && !names.includes(current)) opts.push([current, current + ' (absent)']);
+  return opts;
+}
+function outputOptions(current, withDefault) {
+  const names = outputNames();
+  const def = cfg.settings.defaultOutput;
+  const opts = withDefault ? [['default', 'Sortie par défaut' + (def ? ` (${def})` : ' (aucune)')]] : [];
+  opts.push(...names.map(n => [n, n]), ['', 'Aucune (moniteur seulement)']);
+  if (current && current !== 'default' && !names.includes(current)) opts.push([current, current + ' (absent)']);
+  return opts;
+}
+
+function ruleBody(rule) {
+  const s = rule.src, info = srcInfo(s.type);
+  const srcPane = h('section', { class: 'pane' },
+    h('div', { class: 'pane-title' }, h('span', { class: 'tag in' }, 'SI'), 'le message reçu correspond à'),
+    h('div', { class: 'grid2' },
+      h('label', { class: 'f' }, h('span', null, 'Type'), sel(SRC_TYPES, s.type, v => { s.type = v; changed(rule, true); })),
+      h('label', { class: 'f' }, h('span', null, 'Entrée'), sel(inputOptions(s.input), s.input, v => { s.input = v; changed(rule); })),
+      h('label', { class: 'f' }, h('span', null, 'Canal'), setInput(s, 'ch', false, 'tous · ex. 1, 1-4', rule)),
+      info.num && h('label', { class: 'f' }, h('span', null, info.num), setInput(s, 'num', info.note, info.note ? 'toutes · ex. 60, C4, C3-B3' : 'tous · ex. 1, 20-29', rule)),
+      info.val && h('label', { class: 'f' }, h('span', null, info.val), setInput(s, 'val', false, s.type === 'pb' ? 'toutes · ex. 8192-16383' : 'toutes · ex. 1-127', rule)),
+    ),
+    h('div', { class: 'act-hint', html: 'Champ vide = tout accepter. Syntaxe : <code>60</code>, <code>C4</code>/<code>Do4</code>, plages <code>36-51</code>, listes <code>1, 3, 5-8</code>.' }),
+  );
+  const actPane = h('section', { class: 'pane' },
+    h('div', { class: 'pane-title' }, h('span', { class: 'tag out' }, 'ALORS'), 'envoyer'),
+    rule.actions.map((a, i) => actionCard(rule, a, i)),
+    rule.actions.length ? null : h('p', { class: 'blocked-note' }, 'Aucune sortie : le message est absorbé (filtré).'),
+    h('button', { class: 'btn add-act', onclick: () => { rule.actions.push(A('cc')); changed(rule, true); }, html: '<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Ajouter une sortie' }),
+  );
+  return h('div', { class: 'rule-body' },
+    h('div', { class: 'rule-grid' }, srcPane, h('div', { class: 'flow-arrow', html: icon('arrow') }), actPane),
+    h('footer', { class: 'rule-opts' },
+      checkEl('Arrêter après cette règle', 'Les règles suivantes sont ignorées quand celle-ci correspond.', rule.stop, v => { rule.stop = v; changed(rule); }),
+      checkEl('Envoyer aussi le message original', 'Transmis tel quel à la sortie par défaut, en plus des conversions.', rule.passOriginal, v => { rule.passOriginal = v; changed(rule); }),
+    ));
+}
+
+const TYPE_HINTS = {
+  same: 'Garde le type du message reçu ; seuls canal, numéro ou valeur changent.',
+  note: 'Envoie Note On quand la source est un appui (note enfoncée, CC ≥ 64…) et la vélocité > 0, sinon Note Off.',
+  pb: 'Valeur 0–16383, centre 8192. Une source 7 bits est convertie automatiquement.',
+  raw: 'Octets en hexadécimal. Variables : <code>{ch}</code> (canal, 1 chiffre 0–F), <code>{num}</code>, <code>{val}</code>. Ex. <code>B{ch} 07 {val}</code>, SysEx <code>F0 … F7</code>.',
+};
+function actionCard(rule, act, i) {
+  const t = act.type, info = tgtInfo(t);
+  const hint = TYPE_HINTS[t] ? h('div', { class: 'act-hint', html: TYPE_HINTS[t] + (t === 'raw' && !rt.sysex ? ' <b>SysEx non autorisé par le navigateur.</b>' : '') }) : null;
+  let raw = null;
+  if (t === 'raw') {
+    const el = h('input', { class: 'field wide', value: act.raw, placeholder: 'F0 7D {num} {val} F7', spellcheck: 'false' });
+    const check = () => { try { buildRaw(el.value, 1, 60, 100); el.classList.remove('invalid'); el.title = ''; } catch (e) { el.classList.add('invalid'); el.title = e.message; } };
+    el.addEventListener('input', () => { act.raw = el.value; check(); changed(rule); });
+    check();
+    raw = h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Trame'), h('div', { class: 'params', style: 'grid-column: 2 / -1' }, el));
+  }
+  const numIn = (key, ph, cls = 'n') => {
+    const el = h('input', { class: 'field ' + cls, value: act[key], placeholder: ph, inputmode: 'numeric' });
+    el.addEventListener('input', () => { act[key] = el.value; changed(rule); });
+    return el;
+  };
+  const extras = [h('label', null, 'Délai', numIn('delay', '0'), 'ms')];
+  if (t === 'noteon' || t === 'note') extras.push(h('label', { title: 'Envoie automatiquement le Note Off après cette durée (0 = jamais)' }, 'Note Off auto après', numIn('pulse', '0'), 'ms'));
+  return h('div', { class: 'act' },
+    h('div', { class: 'act-head' },
+      h('span', { class: 'act-n' }, String(i + 1)),
+      sel(TGT_TYPES, t, v => { act.type = v; adaptDefaults(act); changed(rule, true); }, 'act-type'),
+      sel(outputOptions(act.output, true), act.output, v => { act.output = v; changed(rule); }, 'act-port'),
+      iconBtn('x', 'Retirer cette sortie', () => { rule.actions.splice(i, 1); changed(rule, true); }, false, 'danger'),
+    ),
+    raw,
+    fieldRow(rule, act, 'ch', 'Canal', t),
+    info.num && fieldRow(rule, act, 'num', info.num, t),
+    info.val && fieldRow(rule, act, 'val', info.val, t),
+    hint,
+    h('div', { class: 'act-extra' }, extras),
+  );
+}
+function adaptDefaults(act) {
+  const info = tgtInfo(act.type);
+  if (act.num.mode === 'fixed' && info.note && (act.num.a === '' || act.num.a === '1')) act.num.a = '60';
+  if (act.type === 'same' || act.type === 'note' || act.type === 'raw') { if (act.num.mode === 'fixed' && act.num.a === '1') act.num.mode = 'same'; }
+}
+function modeDefaults(f, kind, t) {
+  const max = kind === 'ch' ? 16 : (kind === 'val' && t === 'pb') ? 16383 : 127;
+  const min = kind === 'ch' ? 1 : 0;
+  const isEmpty = x => x === '' || x == null;
+  switch (f.mode) {
+    case 'fixed': if (isEmpty(f.a)) f.a = String(kind === 'ch' ? 1 : kind === 'num' ? (tgtInfo(t).note ? 60 : 1) : max); break;
+    case 'offset': if (isEmpty(f.a) || Number.isNaN(Number(f.a))) f.a = '0'; break;
+    case 'scale': f.a = f.a || '0'; f.b = f.b || '127'; f.c = f.c || String(min); f.d = f.d || String(max); break;
+    case 'gate': case 'toggle': f.a = String(max); f.b = String(min); break;
+  }
+}
+function fieldRow(rule, act, kind, label, t) {
+  const f = act[kind];
+  const params = h('div', { class: 'params' });
+  const notes = kind === 'num' && tgtInfo(t).note;
+  const P = (key, ph, cls = 'n', validate) => {
+    const el = h('input', { class: 'field ' + cls, value: f[key], placeholder: ph, spellcheck: 'false' });
+    const check = () => { const err = validate ? validate(el.value) : null; el.classList.toggle('invalid', !!err); el.title = err || ''; };
+    el.addEventListener('input', () => { f[key] = el.value; check(); changed(rule); });
+    check();
+    return el;
+  };
+  const k = txt => h('span', { class: 'k' }, txt);
+  const desc = txt => h('span', { class: 'desc' }, txt);
+  const numCheck = v => Number.isNaN(parseNum(v, notes)) ? 'Nombre attendu' + (notes ? ' (ou note, ex. C4)' : '') : null;
+  switch (f.mode) {
+    case 'same': params.append(desc(kind === 'val' ? 'valeur de la source' : kind === 'num' ? 'numéro de la source' : 'canal de la source')); break;
+    case 'fixed': params.append(P('a', notes ? '60 / C4' : '0', 'n', numCheck), ...(notes ? [desc('note ou numéro')] : [])); break;
+    case 'offset': params.append(k('+'), P('a', '0', 'n', numCheck), desc(kind === 'num' && notes ? 'demi-tons (négatif pour descendre)' : 'négatif pour soustraire')); break;
+    case 'invert': params.append(desc(t === 'pb' ? '16383 − valeur' : '127 − valeur')); break;
+    case 'scale': params.append(k('de'), P('a', '0'), k('à'), P('b', '127'), k('→'), P('c', '0'), k('à'), P('d', '127')); break;
+    case 'gate': params.append(k('appui'), P('a', '127'), k('relâche'), P('b', '0')); break;
+    case 'toggle': params.append(k('alterne'), P('a', '127'), k('/'), P('b', '0'), desc('à chaque appui')); break;
+    case 'map': params.append(P('text', kind === 'num' ? '36=40, 38=42, *=x' : '0=127, 127=0', 'wide', v => parseMap(v, notes).error ? 'Format : source=sortie, séparés par des virgules ; *=… pour le reste ; x = ne rien envoyer' : null)); break;
+    case 'fromVal': params.append(desc('la valeur (vélocité, CC…) devient le numéro')); break;
+    case 'fromNum': params.append(desc('le numéro (note, CC, programme) devient la valeur')); break;
+    case 'expr': params.append(P('text', kind === 'val' ? '127 - val' : 'num + 12', 'wide', checkExpr)); break;
+  }
+  const row = h('div', { class: 'frow' },
+    h('span', { class: 'flabel' }, label),
+    sel(MODES[kind], f.mode, v => { f.mode = v; modeDefaults(f, kind, t); changed(rule, true); }),
+    params);
+  if (f.mode === 'expr') return h('div', null, row, h('div', { class: 'act-hint', style: 'margin-top:6px', html: 'Variables <code>ch</code> <code>num</code> <code>val</code> <code>type</code> ; fonctions <code>round</code>, <code>min</code>, <code>max</code>, <code>pow</code>… ; <code>null</code> = ne rien envoyer. Ex. <code>val &gt; 64 ? 127 : 0</code>' }));
+  if (f.mode === 'map') return h('div', null, row, h('div', { class: 'act-hint', style: 'margin-top:6px', html: '<code>source=sortie</code> séparés par des virgules. <code>*=…</code> pour toutes les autres valeurs, <code>x</code> pour ne rien envoyer. Sans correspondance : valeur inchangée.' }));
+  return row;
+}
+
+/* Actions sur les règles */
+function addRule(rules, focus = true) {
+  cfg.rules.forEach(r => r.open = false);
+  cfg.rules.push(...rules);
+  save(); renderRules();
+  if (focus) { const el = $(`.rule[data-id="${rules[0].id}"]`); el && el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+}
+function addTemplate(tpl) { addRule(tpl.make()); toast(`Modèle ajouté : ${tpl.name}`); }
+function moveRule(rule, d) {
+  const i = cfg.rules.indexOf(rule), j = i + d;
+  if (j < 0 || j >= cfg.rules.length) return;
+  [cfg.rules[i], cfg.rules[j]] = [cfg.rules[j], cfg.rules[i]];
+  save(); renderRules();
+}
+function dupRule(rule) {
+  const copy = normRule(JSON.parse(JSON.stringify(rule)));
+  copy.id = uid(); copy.name = rule.name + ' (copie)';
+  copy.actions.forEach(a => a.id = uid());
+  cfg.rules.splice(cfg.rules.indexOf(rule) + 1, 0, copy);
+  save(); renderRules();
+}
+function delRule(rule) {
+  const snap = snapshot();
+  cfg.rules.splice(cfg.rules.indexOf(rule), 1);
+  if (rt.learning === rule.id) rt.learning = null;
+  save(); renderRules();
+  toast(`Règle « ${rule.name} » supprimée`, () => restore(snap));
+}
+function toggleLearn(rule) {
+  const prev = rt.learning && cfg.rules.find(r => r.id === rt.learning);
+  rt.learning = rt.learning === rule.id ? null : rule.id;
+  if (prev && prev !== rule) rerenderRule(prev);
+  rerenderRule(rule);
+  if (rt.learning) toast('Joue une note, tourne un bouton… sur ton contrôleur (Échap pour annuler)');
+}
+function learnFrom(msg) {
+  const rule = cfg.rules.find(r => r.id === rt.learning);
+  rt.learning = null;
+  if (!rule) return;
+  const isNote = msg.type === 'noteon' || msg.type === 'noteoff';
+  const type = isNote && rule.src.type === 'note' ? 'note' : msg.type === 'noteoff' ? 'noteon' : msg.type;
+  Object.assign(rule.src, { type, ch: String(msg.ch), num: msg.num != null && srcInfo(type).num ? String(msg.num) : '', val: '' });
+  rule.open = true;
+  save();
+  requestAnimationFrame(() => rerenderRule(rule));
+  toast('Appris : ' + srcSummary(rule.src));
+}
+function testRule(rule) {
+  const s = rule.src;
+  const type = s.type === 'any' || s.type === 'note' ? 'noteon' : s.type;
+  const first = (str, notes, def) => { const set = parseSet(str, notes); return set && !set.error && set.ranges.length ? set.ranges[0][0] : def; };
+  const ch = Math.min(16, Math.max(1, first(s.ch, false, 1)));
+  const num = first(s.num, true, type === 'cc' ? 1 : 60) & 127;
+  const pref = { pb: 12288, noteoff: 0, cc: 127 }[type] ?? 100;
+  const vs = parseSet(s.val, false);
+  const val = !vs || vs.error || inSet(vs, pref) ? pref : vs.ranges[0][0];
+  const port = s.input === '*' ? TEST : s.input;
+  handle(encode(type, ch, num, type === 'noteon' && val === 0 ? 1 : val), port, true);
+  if (s.type === 'note') setTimeout(() => handle(encode('noteoff', ch, num, 0), port, true), 350);
+}
+
+/* =====================================================================
+   Moniteur
+   ===================================================================== */
+const hex = b => b.length > 20 ? b.slice(0, 18).map(x => x.toString(16).toUpperCase().padStart(2, '0')).join(' ') + ' …' : b.map(x => x.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+const SYS = { 0xF1: 'MTC Quarter Frame', 0xF2: 'Song Position', 0xF3: 'Song Select', 0xF6: 'Tune Request', 0xF8: 'Clock', 0xFA: 'Start', 0xFB: 'Continue', 0xFC: 'Stop', 0xFE: 'Active Sensing', 0xFF: 'Reset' };
+function fmtMsg(b) {
+  const s = b[0];
+  if (s === 0xF0) return `<span class="tb sys">SysEx</span> <span class="kv">${b.length} octets</span>`;
+  if (s > 0xF0) return `<span class="tb sys">${SYS[s] || 'Système'}</span>`;
+  const hi = s & 0xF0, ch = (s & 15) + 1, kv = (k, v) => `<span class="kv">${k}</span> ${v}`;
+  const note = n => `${noteName(n)} <span class="kv">(${n})</span>`;
+  const chs = ' ' + kv('ch', ch);
+  switch (hi) {
+    case 0x90: return b[2] === 0 ? `<span class="tb note">Note Off</span> ${note(b[1])} <span class="kv">(On vél 0)</span>${chs}` : `<span class="tb note">Note On</span> ${note(b[1])} ${kv('vél', b[2])}${chs}`;
+    case 0x80: return `<span class="tb note">Note Off</span> ${note(b[1])} ${kv('vél', b[2])}${chs}`;
+    case 0xB0: return `<span class="tb cc">CC ${b[1]}</span> ${kv('=', b[2])}${chs}`;
+    case 0xC0: return `<span class="tb pc">Program</span> ${b[1]}${chs}`;
+    case 0xD0: return `<span class="tb at">Aftertouch</span> ${b[1]}${chs}`;
+    case 0xA0: return `<span class="tb at">Poly AT</span> ${note(b[1])} ${kv('=', b[2])}${chs}`;
+    case 0xE0: { const v = b[1] | (b[2] << 7); return `<span class="tb pb">Pitch Bend</span> ${v} <span class="kv">(${v - 8192 >= 0 ? '+' : ''}${v - 8192})</span>${chs}`; }
+  }
+  return '?';
+}
+const two = n => String(n).padStart(2, '0');
+const fmtTime = d => `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+function renderEntry(e) {
+  const out = [];
+  out.push(`<div class="ln in"><span class="d" title="${fmtTime(e.time)}">${fmtTime(e.time).slice(3)}</span><span class="m">${fmtMsg(e.bytes)} <span class="p">· ${esc(e.port)}</span>${e.test ? '<span class="r">test</span>' : ''}</span><span class="hx">${hex(e.bytes)}</span></div>`);
+  for (const o of e.outs) {
+    const rule = o.rule ? `<span class="r">${esc(o.rule)}</span>` : (o.thru ? `<span class="r">${e.bypass ? 'bypass' : 'thru'}</span>` : '');
+    if (o.note) { out.push(`<div class="ln note"><span class="d">↳</span><span class="m">${esc(o.note)} ${rule}</span><span></span></div>`); continue; }
+    if (o.status === 'error' && !o.bytes) { out.push(`<div class="ln err"><span class="d">↳ erreur</span><span class="m">${esc(o.error)} ${rule}</span><span></span></div>`); continue; }
+    const where = o.status === 'none' ? 'aucune sortie' : o.status === 'missing' ? `${o.port} (absent)` : o.port;
+    const err = o.status === 'error' ? ` <span style="color:var(--danger)">${esc(o.error)}</span>` : '';
+    const delay = o.delay > 0 ? ` <span class="kv">+${o.delay} ms</span>` : '';
+    out.push(`<div class="ln out"><span class="d">↳ envoyé</span><span class="m">${fmtMsg(o.bytes)}${delay} <span class="p">→ ${esc(where)}</span>${rule}${err}</span><span class="hx">${hex(o.bytes)}</span></div>`);
+  }
+  if (!e.matched && !e.outs.length) out.push('<div class="ln note"><span class="d">↳</span><span class="m">aucune règle ne correspond</span><span></span></div>');
+  return h('div', { class: 'ev' + (e.matched ? ' matched' : ''), html: out.join('') });
+}
+function log(entry) {
+  if (rt.paused) return;
+  rt.logQ.push(entry);
+  if (!rt.logRaf) rt.logRaf = requestAnimationFrame(flushLog);
+}
+function flushLog() {
+  rt.logRaf = 0;
+  const q = rt.logQ.splice(0).slice(-LOG_MAX);
+  const box = $('#log');
+  const frag = document.createDocumentFragment();
+  for (let i = q.length - 1; i >= 0; i--) frag.append(renderEntry(q[i]));
+  box.prepend(frag);
+  while (box.childElementCount > LOG_MAX) box.lastElementChild.remove();
+}
+function flashLed(dir, port, delay = 0) {
+  const led = rt.leds[dir].get(port);
+  if (!led) return;
+  const on = () => { led.classList.add('on'); clearTimeout(led._t); led._t = setTimeout(() => led.classList.remove('on'), 90); };
+  delay > 0 ? setTimeout(on, delay) : on();
+}
+let hitQueue = new Set(), hitRaf = 0;
+function bumpHit(rule) {
+  rt.hits[rule.id] = (rt.hits[rule.id] || 0) + 1;
+  hitQueue.add(rule.id);
+  if (!hitRaf) hitRaf = requestAnimationFrame(() => {
+    hitRaf = 0;
+    for (const id of hitQueue) {
+      const b = $(`[data-hits="${id}"]`);
+      if (!b) continue;
+      b.textContent = rt.hits[id];
+      const card = b.closest('.rule');
+      card.classList.remove('hit'); void card.offsetWidth; card.classList.add('hit');
+    }
+    hitQueue.clear();
+  });
+}
+
+/* =====================================================================
+   Ports & réglages
+   ===================================================================== */
+function renderPorts() {
+  const ins = $('#inputs'), outs = $('#outputs');
+  ins.replaceChildren(); outs.replaceChildren();
+  rt.leds.in.clear(); rt.leds.out.clear();
+  const inNames = inputNames(), outNames = outputNames();
+  $('#inCount').textContent = '';
+  if (rt.access) setStatus('ok', `MIDI prêt · ${inNames.length} entrée${inNames.length > 1 ? 's' : ''} · ${outNames.length} sortie${outNames.length > 1 ? 's' : ''}${rt.sysex ? ' · SysEx' : ''}`);
+
+  for (const name of [...inNames, VKEY]) {
+    const led = h('span', { class: 'led in' });
+    rt.leds.in.set(name, led);
+    ins.append(h('label', { class: 'port' },
+      h('input', { type: 'checkbox', checked: cfg.settings.inputs[name] !== false, onchange: e => { cfg.settings.inputs[name] = e.target.checked; save(); bindInputs(); checkLoop(); } }),
+      h('span', { class: 'name', title: name }, name), name === VKEY ? h('span', { class: 'tagv' }, 'virtuel') : null, led));
+  }
+  if (!inNames.length) ins.append(h('p', { class: 'hint', style: 'margin:4px 8px' }, rt.access ? 'Aucun appareil MIDI détecté. Branche-le : la liste se met à jour toute seule.' : 'Ports matériels indisponibles.'));
+  rt.leds.in.set(TEST, rt.leds.in.get(VKEY));
+
+  const def = cfg.settings.defaultOutput;
+  const list = [...outNames];
+  if (def && !list.includes(def)) list.push(def);
+  for (const name of [...list, '']) {
+    const led = name ? h('span', { class: 'led out' }) : null;
+    if (name) rt.leds.out.set(name, led);
+    const missing = name && !outNames.includes(name);
+    outs.append(h('label', { class: 'port' + (missing ? ' missing' : '') },
+      h('input', { type: 'radio', name: 'defout', checked: def === name, onchange: () => { cfg.settings.defaultOutput = name; save(); renderRules(); checkLoop(); } }),
+      h('span', { class: 'name', title: name }, name ? name + (missing ? ' (absent)' : '') : 'Aucune (moniteur seulement)'), led));
+  }
+  checkLoop();
+  renderPresets();
+}
+function checkLoop() {
+  const def = cfg.settings.defaultOutput;
+  const loop = def && inputNames().includes(def) && cfg.settings.inputs[def] !== false && /iac|loopmidi|bus|virtual|virtuel/i.test(def);
+  const w = $('#loopWarn');
+  w.hidden = !loop;
+  if (loop) w.textContent = `⚠ « ${def} » est à la fois une entrée écoutée et la sortie : risque de boucle infinie. Décoche cette entrée ou choisis un autre bus.`;
+}
+function renderSettings() {
+  const s = cfg.settings;
+  $('#setThru').checked = s.thru;
+  $('#setVel0').checked = s.vel0off;
+  $('#setClock').checked = s.hideClock;
+  $('#setMiddleC').value = s.middleC;
+  $('#bypass').checked = s.bypass;
+  applyTheme();
+}
+function applyTheme() {
+  const t = cfg.settings.theme;
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  $('#themeBtn').innerHTML = icon(t === 'light' ? 'sun' : t === 'dark' ? 'moon' : 'auto');
+  $('#themeBtn').title = 'Thème : ' + ({ auto: 'automatique', light: 'clair', dark: 'sombre' })[t];
+}
+
+/* Configurations enregistrées */
+function loadPresets() { try { return JSON.parse(localStorage.getItem(PRESETS)) || {}; } catch (e) { return {}; } }
+function storePresets(p) { try { localStorage.setItem(PRESETS, JSON.stringify(p)); } catch (e) { toast('Impossible d’enregistrer (stockage indisponible)'); } cloudSave(); }
+function renderPresets() {
+  const p = loadPresets(), names = Object.keys(p).sort((a, b) => a.localeCompare(b));
+  const s = $('#presetSel');
+  s.replaceChildren(...(names.length ? names.map(n => h('option', { value: n }, n)) : [h('option', { value: '' }, 'Aucune configuration')]));
+  s.disabled = $('#presetLoad').disabled = $('#presetDel').disabled = !names.length;
+}
+
+/* =====================================================================
+   Clavier virtuel
+   ===================================================================== */
+const KEYMAP = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11, KeyK: 12, KeyO: 13, KeyL: 14, KeyP: 15, Semicolon: 16 };
+const kbdHeld = new Map();
+function kbdBase() { return (cfg.settings.kbdOct + octShift()) * 12; }
+function renderKeyboard() {
+  const kbd = $('#kbd');
+  kbd.replaceChildren();
+  const base = kbdBase(), whites = [];
+  for (let i = 0; i < 25; i++) if (![1, 3, 6, 8, 10].includes(i % 12)) whites.push(i);
+  const ww = 100 / whites.length;
+  let wi = 0;
+  for (let i = 0; i < 25; i++) {
+    const n = base + i;
+    if (n > 127) break;
+    const black = [1, 3, 6, 8, 10].includes(i % 12);
+    const el = h('div', { class: black ? 'b' : 'w', 'data-n': n });
+    if (black) { el.style.left = `calc(${wi * ww}% - ${ww * 0.32}%)`; el.style.width = ww * 0.64 + '%'; }
+    else { if (i % 12 === 0) el.append(h('span', null, noteName(n))); wi++; }
+    kbd.append(el);
+  }
+  $('#octLbl').textContent = noteName(base) + '–' + noteName(Math.min(127, base + 24));
+}
+function vNote(n, on) {
+  if (n < 0 || n > 127) return;
+  const ch = cfg.settings.kbdCh - 1;
+  if (cfg.settings.inputs[VKEY] === false) { toast('Le clavier virtuel est désactivé dans les entrées'); return; }
+  handle(on ? [0x90 | ch, n, +$('#kbdVel').value] : [0x80 | ch, n, 0], VKEY);
+  const el = $(`#kbd [data-n="${n}"]`);
+  if (el) el.classList.toggle('down', on);
+}
+function initKeyboard() {
+  const kbd = $('#kbd');
+  let pointerNote = null;
+  kbd.addEventListener('pointerdown', e => {
+    const n = e.target.closest('[data-n]'); if (!n) return;
+    kbd.setPointerCapture(e.pointerId);
+    pointerNote = +n.dataset.n; vNote(pointerNote, true);
+  });
+  kbd.addEventListener('pointermove', e => {
+    if (pointerNote === null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const n = el && el.closest && el.closest('#kbd [data-n]');
+    if (n && +n.dataset.n !== pointerNote) { vNote(pointerNote, false); pointerNote = +n.dataset.n; vNote(pointerNote, true); }
+  });
+  const up = () => { if (pointerNote !== null) { vNote(pointerNote, false); pointerNote = null; } };
+  kbd.addEventListener('pointerup', up); kbd.addEventListener('pointercancel', up);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && rt.learning) { const r = cfg.rules.find(x => x.id === rt.learning); rt.learning = null; r && rerenderRule(r); return; }
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    if (!(e.code in KEYMAP)) return;
+    const n = kbdBase() + KEYMAP[e.code];
+    kbdHeld.set(e.code, n); vNote(n, true);
+  });
+  document.addEventListener('keyup', e => { if (kbdHeld.has(e.code)) { vNote(kbdHeld.get(e.code), false); kbdHeld.delete(e.code); } });
+  $('#octDown').onclick = () => { cfg.settings.kbdOct = Math.max(-1, cfg.settings.kbdOct - 1); save(); renderKeyboard(); };
+  $('#octUp').onclick = () => { cfg.settings.kbdOct = Math.min(8, cfg.settings.kbdOct + 1); save(); renderKeyboard(); };
+  $('#kbdVel').oninput = e => $('#kbdVelLbl').textContent = e.target.value;
+  const chSel = $('#kbdCh');
+  for (let c = 1; c <= 16; c++) chSel.append(h('option', { value: c }, 'ch ' + c));
+  chSel.value = cfg.settings.kbdCh;
+  chSel.onchange = () => { cfg.settings.kbdCh = +chSel.value; save(); };
+}
+
+/* =====================================================================
+   Initialisation & événements globaux
+   ===================================================================== */
+function renderAll() { renderSettings(); renderPorts(); renderRules(); renderKeyboard(); }
+
+function initUI() {
+  const s = () => cfg.settings;
+  $('#setThru').onchange = e => { s().thru = e.target.checked; save(); };
+  $('#setVel0').onchange = e => { s().vel0off = e.target.checked; save(); };
+  $('#setClock').onchange = e => { s().hideClock = e.target.checked; save(); };
+  $('#setMiddleC').onchange = e => { s().middleC = e.target.value; save(); renderRules(); renderKeyboard(); };
+  $('#bypass').onchange = e => { s().bypass = e.target.checked; save(); toast(e.target.checked ? 'Bypass actif : les règles sont ignorées' : 'Règles actives'); };
+  $('#themeBtn').onclick = () => { const order = ['auto', 'light', 'dark']; s().theme = order[(order.indexOf(s().theme) + 1) % 3]; save(); applyTheme(); };
+  $('#panicBtn').onclick = () => {
+    let n = 0;
+    for (const o of rt.access ? rt.access.outputs.values() : []) {
+      for (let c = 0; c < 16; c++) { try { o.send([0xB0 | c, 123, 0]); o.send([0xB0 | c, 120, 0]); n++; } catch (e) { /* port fermé */ } }
+    }
+    rt.toggles.clear();
+    toast(n ? 'All Notes Off envoyé sur toutes les sorties' : 'Aucune sortie MIDI disponible');
+  };
+
+  $('#addRule').onclick = () => addRule([R('Nouvelle règle', { type: 'noteon' }, [A('cc')])]);
+  const menu = $('#tplMenu');
+  for (const t of TEMPLATES) menu.append(t.sep ? h('div', { class: 'sep' }) : h('button', { onclick: () => { menu.hidden = true; addTemplate(t); } }, h('b', null, t.name), h('span', null, t.desc)));
+  $('#tplBtn').onclick = e => { e.stopPropagation(); menu.hidden = !menu.hidden; };
+  document.addEventListener('click', e => { if (!menu.hidden && !menu.contains(e.target)) menu.hidden = true; });
+
+  $('#logFilter').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $('#logFilter').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('#log').dataset.filter = b.dataset.f;
+  };
+  $('#hexBtn').onclick = e => { const on = $('#log').classList.toggle('show-hex'); e.target.classList.toggle('active', on); };
+  $('#pauseBtn').onclick = e => { rt.paused = !rt.paused; e.target.textContent = rt.paused ? 'Reprendre' : 'Pause'; e.target.classList.toggle('active', rt.paused); };
+  $('#clearBtn').onclick = () => { $('#log').replaceChildren(); rt.stats.in = rt.stats.out = 0; rt.hits = {}; document.querySelectorAll('[data-hits]').forEach(b => b.textContent = '0'); };
+  setInterval(() => { $('#statIn').textContent = rt.stats.in; $('#statOut').textContent = rt.stats.out; }, 250);
+
+  $('#presetDel').innerHTML = icon('trash');
+  $('#presetSave').onclick = () => {
+    const name = $('#presetName').value.trim();
+    if (!name) { $('#presetName').focus(); return; }
+    const p = loadPresets(); const existed = name in p;
+    p[name] = snapshot(); storePresets(p); renderPresets(); $('#presetSel').value = name; $('#presetName').value = '';
+    toast(existed ? `Configuration « ${name} » mise à jour` : `Configuration « ${name} » enregistrée`);
+  };
+  $('#presetLoad').onclick = () => {
+    const name = $('#presetSel').value, p = loadPresets()[name]; if (!p) return;
+    const snap = snapshot(); restore(p); toast(`Configuration « ${name} » chargée`, () => restore(snap));
+  };
+  $('#presetDel').onclick = () => {
+    const name = $('#presetSel').value, p = loadPresets(); if (!(name in p)) return;
+    const old = p[name]; delete p[name]; storePresets(p); renderPresets();
+    toast(`Configuration « ${name} » supprimée`, () => { const q = loadPresets(); q[name] = old; storePresets(q); renderPresets(); });
+  };
+  $('#exportBtn').onclick = () => {
+    const blob = new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `midi-mapper-${new Date().toISOString().slice(0, 10)}.json` });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $('#importBtn').onclick = () => $('#importFile').click();
+  $('#importFile').onchange = async e => {
+    const file = e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!Array.isArray(data.rules)) throw new Error('pas de liste « rules »');
+      const snap = snapshot(); restore(data); toast(`Importé : ${cfg.rules.length} règle(s)`, () => restore(snap));
+    } catch (err) { toast('Fichier invalide : ' + err.message); }
+  };
+  $('#resetBtn').onclick = () => { const snap = snapshot(); restore(defaultConfig()); toast('Configuration réinitialisée', () => restore(snap)); };
+}
+
+initUI();
+initKeyboard();
+renderAll();
+initMIDI();
+initCloud();
+</script>
+</body>
+</html>
